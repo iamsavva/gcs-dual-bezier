@@ -713,9 +713,9 @@ class PolynomialDualGCS:
 ## ------------------------------------------------------
 # extracting policy 
 
-def build_m_step_horizon_from_layers(gcs:PolynomialDualGCS, layers:T.List[T.List[DualVertex]], m:int, start_vertex:DualVertex, layer_index:int):
-    new_gcs = PolynomialDualGCS(gcs.solver_for_spp)
-    init_vertex = new_gcs.AddVertex(start_vertex.name, start_vertex.convex_set, start_vertex.pot_type)
+def solve_m_step_horizon_from_layers(gcs:PolynomialDualGCS, layers:T.List[T.List[DualVertex]], m:int, start_vertex:DualVertex, layer_index:int, point:npt.NDArray):
+    new_gcs = GraphOfConvexSets()
+    init_vertex = new_gcs.AddVertex(Point(point), start_vertex.name)
     new_layers = []
     new_layers.append([init_vertex])
 
@@ -724,16 +724,12 @@ def build_m_step_horizon_from_layers(gcs:PolynomialDualGCS, layers:T.List[T.List
     for n in range(layer_index+1, last_index+1):
         layer = []
         for og_graph_v in layers[n]:
-            
-            if n == last_index:
-                new_v = new_gcs.AddTargetVertex(og_graph_v.name, og_graph_v.convex_set, lambda x: Expression(0))
-            else:
-                new_v = new_gcs.AddVertex(og_graph_v.name, og_graph_v.convex_set, og_graph_v.pot_type)
+            new_v = new_gcs.AddVertex(og_graph_v.convex_set, og_graph_v.name)
             layer.append(new_v)
 
             # connect with edges to previous layer
             for left_v in new_layers[-1]:
-                edge = gcs.edges[ get_edge_name(left_v.name, new_v.name) ]
+                edge = gcs.edges[ get_edge_name(left_v.name(), new_v.name()) ]
                 def cost_function(x,y):
                     Q = gcs.value_function_solution.GetSolution(edge.lambda_2_right)
                     q = gcs.value_function_solution.GetSolution(edge.lambda_1_right)
@@ -748,59 +744,44 @@ def build_m_step_horizon_from_layers(gcs:PolynomialDualGCS, layers:T.List[T.List
                         cost += f_potential(y)
                     cost += 1000
                     return cost
-                new_gcs.AddEdge(left_v, new_v, cost_function)
-        new_layers.append(layer)
-    return new_gcs
+                
+                new_edge = new_gcs.AddEdge(left_v, new_v, get_edge_name(left_v.name(), new_v.name()) )
+                new_edge.AddCost( cost_function(new_edge.xu(), new_edge.xv()))
 
-def get_next_action_new(gcs:PolynomialDualGCS, layers:T.List[T.List[DualVertex]], m:int, vertex:DualVertex, point:npt.NDArray, layer_index:int):
+        new_layers.append(layer)
+
+    target_v = new_gcs.AddVertex(Hyperrectangle([0],[0]), "target" )
+    for left_v in new_layers[-1]:
+        new_gcs.AddEdge(left_v, target_v, get_edge_name(left_v.name(), target_v.name()) )
+
+
+    gcs_options = GraphOfConvexSetsOptions()
+    gcs_options.convex_relaxation = True
+    gcs_options.max_rounded_paths = 30
+    gcs_options.max_rounding_trials = 30        
+    gcs_options.solver = MosekSolver()
+
+    # solve
+    result = new_gcs.SolveShortestPath(
+        init_vertex, target_v, gcs_options
+    )  # type: MathematicalProgramResult
+    assert result.is_success()
+    cost = result.get_optimal_cost()
+
+    edge_path = new_gcs.GetSolutionPath(init_vertex, target_v, result)
+    vertex_name_path = [init_vertex.name()]
+    value_path = [point]
+    for e in edge_path:
+        vertex_name_path.append(e.v().name())
+        value_path.append(result.GetSolution(e.v().x()))
+    return cost, vertex_name_path, value_path
+
+
+def get_next_action_by_solving_restrictions(gcs:PolynomialDualGCS, layers:T.List[T.List[DualVertex]], m:int, vertex:DualVertex, point:npt.NDArray, layer_index:int):
     return gcs.solve_m_step_policy(layers, m, vertex, point, layer_index)
 
-def get_next_action(gcs:PolynomialDualGCS, layers:T.List[T.List[DualVertex]], m:int, vertex:DualVertex, point:npt.NDArray, layer_index:int):
-    # return next vertex and next point
-    potential = gcs.value_function_solution.GetSolution(vertex.potential).ToExpression()
-    f_potential = lambda x: potential.Substitute({vertex.x[i]: x[i] for i in range(vertex.state_dim)})
-    best_cost, best_vertex, best_action = None, None, None
-    for v in layers[layer_index+1]:
-        prog = MathematicalProgram()
-        x = point
-        y = prog.NewContinuousVariables(v.state_dim)
-        prog.AddLinearConstraint(le( v.convex_set.lb(), y))
-        prog.AddLinearConstraint(ge( v.convex_set.ub(), y))
-        potential = gcs.value_function_solution.GetSolution(v.potential).ToExpression()
-        f_potential = lambda x: potential.Substitute({v.x[i]: x[i] for i in range(v.state_dim)})
-        
-        edge_name = get_edge_name(vertex.name, v.name)
-        edge = gcs.edges[edge_name]
-
-        Q = gcs.value_function_solution.GetSolution(edge.lambda_2_right)
-        B = v.B
-        Y = np.outer( np.hstack(([1], y)), np.hstack(([1], y)) )
-
-        expression = QUADRATIC_COST(x,y) + f_potential(y) - np.sum( B.dot(Y).dot(B.T) * Q)
-        prog.AddCost( expression)
-
-        solution = Solve(prog)
-        assert solution.is_success()
-        
-        if best_cost is None:
-           best_cost =  solution.get_optimal_cost()
-           best_vertex = v
-           best_action = solution.GetSolution(y)
-
-        # if np.abs(solution.get_optimal_cost()-cost_at_this_point ).Evaluate() <= np.abs(best_cost-cost_at_this_point).Evaluate():
-        if solution.get_optimal_cost() <= best_cost:
-            best_cost =  solution.get_optimal_cost()
-            best_vertex = v
-            best_action = solution.GetSolution(y)
-
-
-    print(best_cost, best_vertex.name, best_action)
-    return best_vertex, best_action
-
 def get_next_action_gcs(gcs:PolynomialDualGCS, layers:T.List[T.List[DualVertex]], m:int, vertex:DualVertex, point:npt.NDArray, layer_index:int):
-    #   version that uses GCS
-    new_gcs = build_m_step_horizon_from_layers(gcs, layers, m, vertex, layer_index)
-    cost, vertex_name_path, value_path = new_gcs.solve_for_true_shortest_path(vertex.name, point)
+    cost, vertex_name_path, value_path = solve_m_step_horizon_from_layers(gcs, layers, m, vertex, layer_index, point)
     print(cost, vertex_name_path[1], value_path[1])
     return gcs.vertices[vertex_name_path[1]], value_path[1]
 
@@ -810,7 +791,7 @@ def rollout_m_step_policy(gcs:PolynomialDualGCS, layers:T.List[T.List[DualVertex
         if use_gcs:
             next_vertex, next_point = get_next_action_gcs(gcs, layers, m, vertex, point, layer_index)
         else:
-            next_vertex, next_point = get_next_action_new(gcs, layers, m, vertex, point, layer_index)
+            next_vertex, next_point = get_next_action_by_solving_restrictions(gcs, layers, m, vertex, point, layer_index)
         cost, vertex_trajectory, trajectory = rollout_m_step_policy(gcs, layers, m, next_vertex, next_point, layer_index+1, use_gcs=use_gcs)
         return QUADRATIC_COST(point, next_point) + cost, [next_vertex] + vertex_trajectory, [next_point] + trajectory
     else:
