@@ -22,6 +22,7 @@ from pydrake.geometry.optimization import (  # pylint: disable=import-error, no-
     Hyperrectangle,
     VPolytope
 )
+from pydrake.symbolic import Polynomial, Variable, Variables, Expression  # pylint: disable=import-error, no-name-in-module, unused-import
 
 
 import plotly.graph_objs as go
@@ -106,10 +107,40 @@ class PrimalBoxVertex(PrimalVertex):
             x = self.box.Center()
         y = np.hstack(([1], x))
         return np.outer(y,y)
+    
+    def get_uniform_measure(self, box:Hyperrectangle):
+        lb,ub = box.lb(), box.ub()
+        n = len(lb)
+        prog = MathematicalProgram()
+        vars = prog.NewContinuousVariables(n)
 
+        def compute_moments(moment):
+            return compute_box_moment(lb, ub, vars, moment)
+        vecotrized_moment_compute = np.vectorize(compute_moments)
+
+        m0 = vecotrized_moment_compute( np.ones(1) )
+        m1 = vecotrized_moment_compute( vars )
+        m2 = vecotrized_moment_compute( np.outer(vars, vars) )
+        return np.vstack( (np.hstack( (m0, m1)), np.hstack((m1.reshape((len(m1),1)), m2))) )
+        # return m0[0], m1, m2
+
+
+def compute_box_moment(lb:npt.NDArray, ub:npt.NDArray, vars:npt.NDArray, moment):
+    state_dim = len(vars)
+    p = 1 / np.prod(ub-lb)
+    if not isinstance(moment, Expression):
+        moment = Expression(moment)
+    poly = Polynomial(moment)
+    for i in range(state_dim):
+        x_min, x_max, x_val = lb[i], ub[i], vars[i]
+        integral_of_poly = poly.Integrate(x_val)
+        poly = integral_of_poly.EvaluatePartial({x_val:x_max}) - integral_of_poly.EvaluatePartial({x_val:x_min})
+    poly = poly * p
+    return float(poly.Evaluate(dict()))
 
 class PrimalEdge:
-    def __init__(self, v_left: PrimalVertex, v_right: PrimalVertex, prog: MathematicalProgram, add_noise:bool= False, gamma:int = 0):
+    def __init__(self, v_left: PrimalVertex, v_right: PrimalVertex, prog: MathematicalProgram, add_noise:bool= False, gamma:int = 0, multiplier=1):
+        self.multiplier = 1
         self.left = v_left.name
         self.right = v_right.name
         self.dim = v_left.dim
@@ -118,9 +149,9 @@ class PrimalEdge:
         self.add_noise = add_noise
         self.gamma = gamma
         if self.add_noise:
-            # self.eps_left = prog.NewContinuousVariables(1)[0]
+            self.eps_left = prog.NewContinuousVariables(1)[0]
             self.eps_right = prog.NewContinuousVariables(1)[0]
-            # prog.AddLinearConstraint(self.eps_left >= 0)
+            prog.AddLinearConstraint(self.eps_left >= 0)
             prog.AddLinearConstraint(self.eps_right >= 0)
 
         self.define_psd_distribution_matrix(prog)
@@ -174,7 +205,8 @@ class PrimalEdge:
         prog.AddLinearCost( np.sum( C*self.edge_measure ) )
         # prog.AddLinearCost(np.trace(C @ self.edge_measure))
         if self.add_noise:
-            prog.AddLinearCost(-self.gamma * self.eps_right)
+            prog.AddLinearCost(-self.gamma * (self.eps_right+self.eps_left) )
+            # prog.AddLinearCost(-self.gamma * (self.eps_right) )
         
 
     def add_constraints(self, prog:MathematicalProgram, left:PrimalVertex, right:PrimalVertex):
@@ -184,18 +216,22 @@ class PrimalEdge:
         if self.add_noise:
             noise_mat = self.eps_right * np.eye(1+self.dim)
             noise_mat[0,0] = 0
+            prog.AddLinearConstraint(self.eps_right <= self.edge_measure[0,0] * self.multiplier)
+
+            noise_mat_left = self.eps_left * np.eye(1+self.dim)
+            noise_mat_left[0,0] = 0
+            prog.AddLinearConstraint(self.eps_left <= self.edge_measure[0,0] * self.multiplier)
         else:
             noise_mat = np.zeros((1+self.dim,1+self.dim))
+            noise_mat_left = np.zeros((1+self.dim,1+self.dim))
 
-        Ml = self.get_left_measure()
+        Ml = self.get_left_measure() + noise_mat_left
         Mr = self.get_right_measure() + noise_mat
         Mlr = self.get_left_right_measure()
 
         e_1 = np.zeros((1+self.dim, 1))
         e_1[0] = 1
 
-
-        
         prog.AddLinearConstraint( ge( Bl @ Ml @ e_1, 0  ) )
         prog.AddLinearConstraint( ge( Bl @ Ml @ Bl.T, 0  ) )
 
@@ -215,12 +251,18 @@ def plot_surface(fig:go.Figure, box:Hyperrectangle, m:npt.NDArray, name:str, sca
 
 
     m0 = m[0,0]
+    print(m0, name)
     # Mean vector and covariance matrix
     mu = m[0, 1:] / m0
+    print(mu)
 
     Sigma = m[1:, 1:] / m0 - np.outer(mu,mu)
-    if (not np.allclose(m[0,0],0)) and np.allclose(Sigma,0, atol=1e-2):
-        Sigma = np.eye(2)*0.001
+    # if (not np.allclose(m[0,0],0)) and np.allclose(Sigma,0, atol=1e-4):
+    #     Sigma = np.eye(2)*0.001
+
+    Sigma += np.eye(2)*0.001
+
+    print(Sigma)
 
     # Pack X and Y into a single 3-dimensional array
     pos = np.empty(X.shape + (2,))

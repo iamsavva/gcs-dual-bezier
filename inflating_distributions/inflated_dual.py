@@ -194,6 +194,7 @@ class DualEdge:
         cost_function: T.Callable,
         add_noise=False,
         gamma = 1,
+        noise_multiplier=1,
     ):
         self.name = name
         self.left = v_left
@@ -203,6 +204,9 @@ class DualEdge:
         self.cost_function = cost_function
         self.add_noise = add_noise
         self.gamma = gamma
+        self.noise_multiplier = noise_multiplier
+        self.noise_mat = np.eye(1+self.left.state_dim) * self.noise_multiplier
+        self.noise_mat[0,0] = 0
 
         self.define_sos_constaint(prog)
 
@@ -210,8 +214,6 @@ class DualEdge:
         # -------------------------------------------------
         # get a bunch of variables
         x, y = self.left.x, self.right.x
-
-        xy_vars = Variables(np.hstack((x, y)))
 
         # -------------------------------------------------
         # define cost
@@ -232,9 +234,9 @@ class DualEdge:
         Br = self.right.B
 
         # deg 0 
-        lambda_0 = prog.NewContinuousVariables(1)[0]
-        prog.AddLinearConstraint(lambda_0 >= 0)
-        s_procedure += lambda_0
+        # lambda_0 = prog.NewContinuousVariables(1)[0]
+        # prog.AddLinearConstraint(lambda_0 >= 0)
+        # s_procedure += lambda_0
 
         # deg 1
         deg_1_cons_l = Bl.dot(x_and_1)
@@ -266,11 +268,11 @@ class DualEdge:
 
         s_procedure += np.sum( ( Bl.dot( np.outer(x_and_1, y_and_1) ).dot(Br.T) ) * lambda_2_left_right )
 
-        # TODO: add inflation cosntaints here
+        self.delta = 0.0
         if self.add_noise:
-            eye = np.eye(len(x_and_1))
-            eye[0,0] = 0
-            prog.AddLinearConstraint( self.gamma + np.sum( (Br.dot(eye).dot(Br.T)) * lambda_2_right ) <= 0)
+            self.delta = prog.NewContinuousVariables(1)[0]
+            prog.AddLinearConstraint(self.delta>= 0)
+            prog.AddLinearConstraint(self.gamma - self.delta + np.sum( (Br.dot(self.noise_mat).dot(Br.T)) * lambda_2_right ) <= 0)
 
         # -------------------------------------------------
         # obtain right and left potentials
@@ -279,7 +281,7 @@ class DualEdge:
 
         # -------------------------------------------------
         # form the entire expression
-        expr = edge_cost + right_potential - left_potential - s_procedure
+        expr = edge_cost + right_potential - left_potential - s_procedure - self.delta
         prog.AddSosConstraint(expr)
 
 
@@ -367,6 +369,7 @@ class PolynomialDualGCS:
         cost_function: T.Callable,
         add_noise=False,
         gamma = 1,
+        noise_multiplier=1
     ):
         """
         Options will default to graph initialized options if not specified
@@ -379,7 +382,8 @@ class PolynomialDualGCS:
             self.prog,
             cost_function,
             add_noise=add_noise,
-            gamma=gamma
+            gamma=gamma,
+            noise_multiplier=noise_multiplier
         )
         self.edges[edge_name] = e
         v_left.add_edge_out(edge_name)
@@ -501,14 +505,14 @@ class PolynomialDualGCS:
         return X, Y, evaluator(X, Y)
     
 
-    def make_plots(self, fig=None, cmax=30):
+    def make_plots(self, fig=None, cmax=30, offset=0):
         if fig is None:
             fig = go.Figure()
 
         for v_name in self.vertices.keys():
             X, Y, Z = self.get_policy_cost_for_region_plot(v_name)
             # Create filled 3D contours
-            fig.add_trace(go.Surface(x=X, y=Y, z=Z, surfacecolor=Z, name = v_name, cmin=0,cmax=cmax))
+            fig.add_trace(go.Surface(x=X, y=Y, z=Z-offset, surfacecolor=Z-offset, name = v_name, cmin=0,cmax=cmax))
 
         # Update layout
         fig.update_layout(scene=dict(
@@ -521,7 +525,7 @@ class PolynomialDualGCS:
         return fig
     
 
-    def make_1d_plot_edge_1_step(self, fig:go.Figure, edge: DualEdge, x_point:npt.NDArray, offset=0):
+    def make_1d_plot_edge_1_step(self, fig:go.Figure, edge: DualEdge, x_point:npt.NDArray, offset=0, gamma=0):
         v = edge.right
         assert type(v.convex_set) == Hyperrectangle
         assert len(v.convex_set.lb()) == 1
@@ -553,25 +557,78 @@ class PolynomialDualGCS:
             Y = np.outer( np.array([1,y]), np.array([1,y]) )
             return ( - np.sum( B.dot(Y).dot(B.T) * Q) - B.dot(np.array([1,y])).dot(q))
         
-        def plot_min(x, y, fig, color):
+        def plot_min(x, y, fig, color, name):
             # Find the index of the minimum y value
             min_y_index = np.argmin(y)
             # Get the corresponding x value
             min_x_value = x[min_y_index]
             min_y_value = y[min_y_index]
-            fig.add_trace(go.Scatter(x=[min_x_value], y=[min_y_value], mode='markers', line=dict(color=color), showlegend=False))
+            fig.add_trace(go.Scatter(x=[min_x_value], y=[min_y_value], mode='markers', line=dict(color=color), showlegend=True, name = name))
 
-        fig.add_trace(go.Scatter(x=x_lin, y=np.vectorize(evaluate_0)(x_lin)-offset, mode='lines', name="c+J", line=dict(color="red") ))
-        fig.add_trace(go.Scatter(x=x_lin, y=np.vectorize(evaluate_1)(x_lin)-offset, mode='lines', name="c+J-BB", line=dict(color="blue") ))
-        fig.add_trace(go.Scatter(x=x_lin, y=np.vectorize(evaluate_2)(x_lin)-offset, mode='lines', name="c+J-BB-B", line=dict(color="green") ))
-        fig.add_trace(go.Scatter(x=x_lin, y=np.vectorize(evaluate_3)(x_lin)-offset, mode='lines', name="c-BB-B", line=dict(color="purple") ))
-        fig.add_trace(go.Scatter(x=x_lin, y=np.vectorize(evaluate_4)(x_lin)-offset, mode='lines', name="-BB-B", line=dict(color="magenta") ))
+        fig.update_layout(title=r"$\text{Cost-to-go comparison over set }\;X_w$")
+        fig.add_trace(go.Scatter(x=x_lin, y=np.vectorize(evaluate_0)(x_lin)-offset, mode='lines', name=r"$c(x,x')+J_w(x')$", line=dict(color="red") ))
+        plot_min(x_lin, np.vectorize(evaluate_0)(x_lin)-offset, fig, "red", r"$\min c(x,x')+J_w(x')$")
+        fig.add_trace(go.Scatter(x=x_lin, y=np.vectorize(evaluate_1)(x_lin)-offset, mode='lines', name = r"$\gamma=%d,\; c(x,x')+J_w(x')-\text{LM}$" %gamma, line=dict(color="blue") ))
+        plot_min(x_lin, np.vectorize(evaluate_1)(x_lin)-offset, fig, "blue", r"$\gamma=%d,\; \min c(x,x')+J_w(x')-\text{LM}$" %gamma)
+        # fig.add_trace(go.Scatter(x=x_lin, y=np.vectorize(evaluate_2)(x_lin)-offset, mode='lines', name="c+J-BB-B", line=dict(color="green") ))
+        # fig.add_trace(go.Scatter(x=x_lin, y=np.vectorize(evaluate_3)(x_lin)-offset, mode='lines', name="c-BB-B", line=dict(color="purple") ))
+        # fig.add_trace(go.Scatter(x=x_lin, y=np.vectorize(evaluate_4)(x_lin)-offset, mode='lines', name="-BB-B", line=dict(color="magenta") ))
 
-        plot_min(x_lin, np.vectorize(evaluate_0)(x_lin)-offset, fig, "red")
-        plot_min(x_lin, np.vectorize(evaluate_1)(x_lin)-offset, fig, "blue")
-        plot_min(x_lin, np.vectorize(evaluate_2)(x_lin)-offset, fig, "green")
-        plot_min(x_lin, np.vectorize(evaluate_3)(x_lin)-offset, fig, "purple")
-        plot_min(x_lin, np.vectorize(evaluate_4)(x_lin)-offset, fig, "magenta")
+        
+        
+        # plot_min(x_lin, np.vectorize(evaluate_2)(x_lin)-offset, fig, "green")
+        # plot_min(x_lin, np.vectorize(evaluate_3)(x_lin)-offset, fig, "purple")
+        # plot_min(x_lin, np.vectorize(evaluate_4)(x_lin)-offset, fig, "magenta")
+
+    def make_1d_plot_edge_1_step_just_gamma(self, fig:go.Figure, edge: DualEdge, x_point:npt.NDArray, offset=0, gamma=0, color="blue"):
+        v = edge.right
+        assert type(v.convex_set) == Hyperrectangle
+        assert len(v.convex_set.lb()) == 1
+        x_lin = np.linspace(v.convex_set.lb()[0], v.convex_set.ub()[0], 100, endpoint=True)
+
+        potential = self.value_function_solution.GetSolution(v.potential).ToExpression()
+        f_potential = lambda x: potential.Substitute({v.x[i]: x[i] for i in range(v.state_dim)})
+        
+        q = self.value_function_solution.GetSolution(edge.lambda_1_right)
+        Q = self.value_function_solution.GetSolution(edge.lambda_2_right)
+        B = v.B
+
+        def evaluate_0(y):
+            return (QUADRATIC_COST(x_point,np.array([y]) ) + f_potential(np.array([y]))).Evaluate()
+            
+        def evaluate_1(y):
+            Y = np.outer( np.array([1,y]), np.array([1,y]) )
+            return (QUADRATIC_COST(x_point,np.array([y])) + f_potential(np.array([y])) - np.sum( B.dot(Y).dot(B.T) * Q)).Evaluate()
+        
+        def evaluate_2(y):
+            Y = np.outer( np.array([1,y]), np.array([1,y]) )
+            return (QUADRATIC_COST(x_point,np.array([y])) + f_potential(np.array([y])) - np.sum( B.dot(Y).dot(B.T) * Q) - B.dot(np.array([1,y])).dot(q)).Evaluate()
+        
+        def evaluate_3(y):
+            Y = np.outer( np.array([1,y]), np.array([1,y]) )
+            return (QUADRATIC_COST(x_point,np.array([y])) - np.sum( B.dot(Y).dot(B.T) * Q) - B.dot(np.array([1,y])).dot(q))
+        
+        def evaluate_4(y):
+            Y = np.outer( np.array([1,y]), np.array([1,y]) )
+            return ( - np.sum( B.dot(Y).dot(B.T) * Q) - B.dot(np.array([1,y])).dot(q))
+        
+        def plot_min(x, y, fig, color,name):
+            # Find the index of the minimum y value
+            min_y_index = np.argmin(y)
+            # Get the corresponding x value
+            min_x_value = x[min_y_index]
+            min_y_value = y[min_y_index]
+            fig.add_trace(go.Scatter(x=[min_x_value], y=[min_y_value], mode='markers', line=dict(color=color), showlegend=True, name=name))
+
+        # fig.update_layout(title=r"$\text{Cost-to-go comparison over set }\;X_w$")
+        # fig.add_trace(go.Scatter(x=x_lin, y=np.vectorize(evaluate_0)(x_lin)-offset, mode='lines', name=r"$c(x,x')+J_w(x')$", line=dict(color="red") ))
+        fig.add_trace(go.Scatter(x=x_lin, y=np.vectorize(evaluate_1)(x_lin)-offset, mode='lines', name = r"$\gamma=%d,\; c(x,x')+J_w(x')-\text{LM}$" %gamma, line=dict(color=color) ))
+        plot_min(x_lin, np.vectorize(evaluate_1)(x_lin)-offset, fig, color=color, name=r"$\gamma=%d,\; \min c(x,x')+J_w(x')-\text{LM}$" %gamma)
+        # fig.add_trace(go.Scatter(x=x_lin, y=np.vectorize(evaluate_2)(x_lin)-offset, mode='lines', name="c+J-BB-B", line=dict(color="green") ))
+        # fig.add_trace(go.Scatter(x=x_lin, y=np.vectorize(evaluate_3)(x_lin)-offset, mode='lines', name="c-BB-B", line=dict(color="purple") ))
+        # fig.add_trace(go.Scatter(x=x_lin, y=np.vectorize(evaluate_4)(x_lin)-offset, mode='lines', name="-BB-B", line=dict(color="magenta") ))
+
+        # plot_min(x_lin, np.vectorize(evaluate_0)(x_lin)-offset, fig, "red")
         
 
 
@@ -641,9 +698,10 @@ class PolynomialDualGCS:
 
     def solve_restriction(self, vertices: T.List[DualVertex], x_0:npt.NDArray) -> T.Tuple[float, npt.NDArray, DualVertex, npt.NDArray]:
         prog = MathematicalProgram()
-        assert np.all(vertices[0].B.dot(np.hstack(([1], x_0))) >= 0)
+        assert np.all(vertices[0].B.dot(np.hstack(([1], x_0))) >= 0-1e-3, )
         x_n = x_0
         x_traj = []
+        last_v = vertices[0]
         for v_index in range(1, len(vertices)):
             v = vertices[v_index]
             edge = self.edges[get_edge_name(vertices[v_index-1].name, v.name)]
@@ -655,6 +713,16 @@ class PolynomialDualGCS:
                 cost = QUADRATIC_COST(x,y) 
                 cost -= np.sum( B.dot(Y).dot(B.T) * Q) 
                 cost -= B.dot( np.hstack(([1], y)) ).dot(q)
+
+                cost -= self.value_function_solution.GetSolution(edge.delta)
+
+                QL = self.value_function_solution.GetSolution(edge.lambda_2_left)
+                qL = self.value_function_solution.GetSolution(edge.lambda_1_left)
+                BL = self.vertices[last_v.name].B
+                YL = np.outer( np.hstack(([1], x)), np.hstack(([1], x)) )
+                cost -= np.sum( BL.dot(YL).dot(BL.T) * QL)
+                cost -= BL.dot( np.hstack(([1], x)) ).dot(qL)
+
                 if v_index == len(vertices)-1:
                     potential = self.value_function_solution.GetSolution(v.potential).ToExpression()
                     f_potential = lambda x: potential.Substitute({v.x[i]: x[i] for i in range(v.state_dim)})
@@ -667,9 +735,10 @@ class PolynomialDualGCS:
             prog.AddLinearConstraint( ge(v.B.dot(np.hstack(([1], x_n1))), 0 ) )
             prog.AddCost( cost_function(x_n, x_n1) )
             x_n = x_n1
+            last_v = vertices[v_index]
 
         solution = Solve(prog)
-        INFO(solution.get_solver_id().name())
+        # INFO(solution.get_solver_id().name())
         assert solution.is_success()
         x_traj_solution = np.array( [solution.GetSolution(xn) for xn in x_traj] )
         cost = solution.get_optimal_cost()
@@ -706,7 +775,7 @@ class PolynomialDualGCS:
                 best_cost, best_action, best_vertex = new_cost, new_action, new_vertex
             go_on, index_sequence = get_next_index_sequence(index_sequence, upper)
 
-        print(best_cost, best_vertex.name, best_action)
+        # print(best_cost, best_vertex.name, best_action)
         return best_vertex, best_action
 
 
@@ -731,13 +800,26 @@ def solve_m_step_horizon_from_layers(gcs:PolynomialDualGCS, layers:T.List[T.List
             for left_v in new_layers[-1]:
                 edge = gcs.edges[ get_edge_name(left_v.name(), new_v.name()) ]
                 def cost_function(x,y):
+
                     Q = gcs.value_function_solution.GetSolution(edge.lambda_2_right)
                     q = gcs.value_function_solution.GetSolution(edge.lambda_1_right)
                     B = og_graph_v.B
                     Y = np.outer( np.hstack(([1], y)), np.hstack(([1], y)) )
                     cost = QUADRATIC_COST(x,y) 
-                    cost -= np.sum( B.dot(Y).dot(B.T) * Q) 
+                    cost -= np.sum( B.dot(Y).dot(B.T) * Q)
                     cost -= B.dot( np.hstack(([1], y)) ).dot(q)
+
+                    # if subtract_delta:
+                    cost -= gcs.value_function_solution.GetSolution(edge.delta)
+
+                    # if subtract_left_multipliers:
+                    QL = gcs.value_function_solution.GetSolution(edge.lambda_2_left)
+                    qL = gcs.value_function_solution.GetSolution(edge.lambda_1_left)
+                    BL = gcs.vertices[left_v.name()].B
+                    YL = np.outer( np.hstack(([1], x)), np.hstack(([1], x)) )
+                    cost -= np.sum( BL.dot(YL).dot(BL.T) * QL)
+                    cost -= BL.dot( np.hstack(([1], x)) ).dot(qL)
+
                     if n == last_index:
                         potential = gcs.value_function_solution.GetSolution(og_graph_v.potential).ToExpression()
                         f_potential = lambda x: potential.Substitute({og_graph_v.x[i]: x[i] for i in range(og_graph_v.state_dim)})
@@ -782,9 +864,8 @@ def get_next_action_by_solving_restrictions(gcs:PolynomialDualGCS, layers:T.List
 
 def get_next_action_gcs(gcs:PolynomialDualGCS, layers:T.List[T.List[DualVertex]], m:int, vertex:DualVertex, point:npt.NDArray, layer_index:int):
     cost, vertex_name_path, value_path = solve_m_step_horizon_from_layers(gcs, layers, m, vertex, layer_index, point)
-    print(cost, vertex_name_path[1], value_path[1])
+    # print(cost, vertex_name_path[1], value_path[1])
     return gcs.vertices[vertex_name_path[1]], value_path[1]
-
 
 def rollout_m_step_policy(gcs:PolynomialDualGCS, layers:T.List[T.List[DualVertex]], m:int, vertex:DualVertex, point:npt.NDArray, layer_index:int, use_gcs=True) -> T.Tuple[float, T.List[DualVertex], T.List[npt.NDArray]]:
     if layer_index < len(layers)-1:
@@ -798,7 +879,7 @@ def rollout_m_step_policy(gcs:PolynomialDualGCS, layers:T.List[T.List[DualVertex
         return 0.0, [], []
 
 
-def plot_policy_rollout(gcs:PolynomialDualGCS, layers:T.List[T.List[DualVertex]], m:int, vertex:DualVertex, layer_index:int, fig:go.Figure, point:npt.NDArray, use_gcs=True):
+def plot_policy_rollout(gcs:PolynomialDualGCS, layers:T.List[T.List[DualVertex]], m:int, vertex:DualVertex, layer_index:int, fig:go.Figure, point:npt.NDArray, use_gcs=True, offset=0):
     
     _, vertex_trajectory, trajectory = rollout_m_step_policy(gcs, layers, m, vertex, point, layer_index, use_gcs=use_gcs)
     vertex_trajectory = [vertex] + vertex_trajectory
@@ -806,11 +887,85 @@ def plot_policy_rollout(gcs:PolynomialDualGCS, layers:T.List[T.List[DualVertex]]
 
     x,y,z = [],[],[]
     n = len(vertex_trajectory)
-    print("trajectory: ", trajectory)
+    # print("trajectory: ", trajectory)
     for i in range(n):
         point = trajectory[i]
         x.append(point[0]) 
         y.append(point[1])
         z.append(vertex_trajectory[i].cost_at_point(point, gcs.value_function_solution))
-    fig.add_traces(go.Scatter3d(x=x, y=y, z=z, mode='lines', line=dict(width=5, color='black')))
+    fig.add_traces(go.Scatter3d(x=x, y=y, z=np.array(z)-offset, mode='lines', line=dict(width=5, color='black')))
+    
+
+def plot_a_layered_graph_1d(layers:T.List[T.List[DualVertex]]):
+    fig = go.Figure()
+    def add_trace(x_min, x_max, y):
+        xs = [x_min,x_max]
+        ys = [y,y]
+        fig.add_trace(go.Scatter(x=xs, y=ys, line=dict(color="black") ))
+
+    y = len(layers)
+    for n, layer in enumerate(layers):
+        for v in layer:
+            add_trace(v.convex_set.lb()[0], v.convex_set.ub()[0], y)
+        y -= 1
+
+    fig.update_layout(height=800, width=800, title_text="Graph view")
+    fig.update_layout(showlegend=False)
+    fig.update_layout(
+        yaxis=dict(scaleanchor="x"),  # set y-axis to have the same scaling as x-axis
+        yaxis2=dict(scaleanchor="x", overlaying="y", side="right"),  # set y-axis2 to have the same scaling as x-axis
+    )
+    return fig
+
+def plot_a_layered_graph_2d(layers:T.List[T.List[DualVertex]]):
+    fig = go.Figure()
+    def add_trace(lb, ub):
+        xs = [lb[0], lb[0], ub[0], ub[0], lb[0]]
+        ys = [lb[1], ub[1], ub[1], lb[1], lb[1]]
+        fig.add_trace(go.Scatter(x=xs, y=ys, line=dict(color="black"), fillcolor='grey', fill='tozeroy' ))
+
+    for layer in layers:
+        for v in layer:
+            add_trace(v.convex_set.lb(), v.convex_set.ub())
+
+    fig.update_layout(height=800, width=800, title_text="Graph view")
+    fig.update_layout(showlegend=False)
+    fig.update_layout(
+        yaxis=dict(scaleanchor="x"),  # set y-axis to have the same scaling as x-axis
+        yaxis2=dict(scaleanchor="x", overlaying="y", side="right"),  # set y-axis2 to have the same scaling as x-axis
+    )
+    return fig
+
+def plot_policy_rollout_1d(gcs:PolynomialDualGCS, layers:T.List[T.List[DualVertex]], m:int, vertex:DualVertex, layer_index:int, fig:go.Figure, point:npt.NDArray, use_gcs=True):
+    _, vertex_trajectory, trajectory = rollout_m_step_policy(gcs, layers, m, vertex, point, layer_index, use_gcs=use_gcs)
+    vertex_trajectory = [vertex] + vertex_trajectory
+    trajectory = [point] + trajectory
+
+    x,y = [],[]
+    n = len(vertex_trajectory)
+    # print("trajectory: ", trajectory)
+    for i in range(n):
+        point = trajectory[i]
+        x.append(point[0]) 
+        y.append(n-i)
+
+    fig.add_trace(go.Scatter(x=x, y=y, line=dict(color="blue"), showlegend=True))
+
+
+
+
+def plot_policy_rollout_2d(gcs:PolynomialDualGCS, layers:T.List[T.List[DualVertex]], m:int, vertex:DualVertex, layer_index:int, fig:go.Figure, point:npt.NDArray, use_gcs=True):
+    _, vertex_trajectory, trajectory = rollout_m_step_policy(gcs, layers, m, vertex, point, layer_index, use_gcs=use_gcs)
+    vertex_trajectory = [vertex] + vertex_trajectory
+    trajectory = [point] + trajectory
+
+    x,y = [],[]
+    n = len(vertex_trajectory)
+    # print("trajectory: ", trajectory)
+    for i in range(n):
+        point = trajectory[i]
+        x.append(point[0]) 
+        y.append(point[1])
+
+    fig.add_trace(go.Scatter(x=x, y=y, line=dict(color="blue"), showlegend=True))
     
