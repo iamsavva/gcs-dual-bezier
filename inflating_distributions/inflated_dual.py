@@ -31,14 +31,14 @@ from pydrake.symbolic import (  # pylint: disable=import-error, no-name-in-modul
     Variables,
     Expression,
 )
-from pydrake.math import ge, eq,le
+from pydrake.math import ge, eq,le # pylint: disable=import-error, no-name-in-module, unused-import
 
 import plotly.graph_objects as go  # pylint: disable=import-error
 from plotly.express.colors import sample_colorscale  # pylint: disable=import-error
 import plotly.graph_objs as go
 from plotly.subplots import make_subplots
 
-from program_options import FREE_POLY, PSD_POLY
+from program_options import FREE_POLY, PSD_POLY, ProgramOptions
 
 from util import (
     timeit,
@@ -58,15 +58,15 @@ class DualVertex:
         name: str,
         prog: MathematicalProgram,
         convex_set: ConvexSet,
+        options: ProgramOptions,
         specific_potential: T.Callable = None,
-        pot_type = PSD_POLY
     ):
         self.name = name
         self.potential_poly_deg = 2
-        self.pot_type = pot_type
+        self.options = options
 
         # Ax <= b
-        self.convex_set = convex_set  # TODO: handle point exactly
+        self.convex_set = convex_set  # TODO: handle ellipsoids exactly
         if isinstance(convex_set, HPolyhedron):
             self.set_type = HPolyhedron
             self.state_dim = convex_set.A().shape[1]
@@ -118,21 +118,13 @@ class DualVertex:
             self.potential = Polynomial(specific_potential(self.x))
         else:
             # potential is a free polynomial
-            if self.pot_type == FREE_POLY:
+            if self.options.pot_type == FREE_POLY:
                 self.potential = prog.NewFreePolynomial( self.vars, 2)
-            elif self.pot_type == PSD_POLY:
+            elif self.options.pot_type == PSD_POLY:
                 # potential is PSD polynomial
                 self.potential, _ = prog.NewSosPolynomial( self.vars, 2 ) # i.e.: convex
             else:
                 raise NotImplementedError("potential type not supported")
-
-    # @staticmethod
-    # def get_product_constraints(constraints):
-    #     product_constraints = []
-    #     for i, con_i in enumerate(constraints):
-    #         for j in range(i + 1, len(constraints)):
-    #             product_constraints.append(con_i * constraints[j])
-    #     return product_constraints
 
     def evaluate_partial_potential_at_point(self, x: npt.NDArray):
         # needed when polynomial parameters are still optimizaiton variables
@@ -192,9 +184,7 @@ class DualEdge:
         v_right: DualVertex,
         prog: MathematicalProgram,
         cost_function: T.Callable,
-        add_noise=False,
-        gamma = 1,
-        noise_multiplier=1,
+        options: ProgramOptions,
     ):
         self.name = name
         self.left = v_left
@@ -202,10 +192,9 @@ class DualEdge:
         self.max_constraint_degree = 2
 
         self.cost_function = cost_function
-        self.add_noise = add_noise
-        self.gamma = gamma
-        self.noise_multiplier = noise_multiplier
-        self.noise_mat = np.eye(1+self.left.state_dim) * self.noise_multiplier
+
+        self.options = options
+        self.noise_mat = np.eye(1+self.left.state_dim) * self.options.noise_magnitude
         self.noise_mat[0,0] = 0
 
         self.define_sos_constaint(prog)
@@ -218,6 +207,11 @@ class DualEdge:
         # -------------------------------------------------
         # define cost
         edge_cost = self.cost_function(x, y)
+
+        # -------------------------------------------------
+        # obtain right and left potentials
+        right_potential = self.right.potential.ToExpression()
+        left_potential = self.left.potential.ToExpression()
 
 
         # -------------------------------------------------
@@ -234,9 +228,9 @@ class DualEdge:
         Br = self.right.B
 
         # deg 0 
-        # lambda_0 = prog.NewContinuousVariables(1)[0]
-        # prog.AddLinearConstraint(lambda_0 >= 0)
-        # s_procedure += lambda_0
+        lambda_0 = prog.NewContinuousVariables(1)[0]
+        prog.AddLinearConstraint(lambda_0 >= 0)
+        s_procedure += lambda_0
 
         # deg 1
         deg_1_cons_l = Bl.dot(x_and_1)
@@ -252,14 +246,16 @@ class DualEdge:
         lambda_2_right = prog.NewSymmetricContinuousVariables(len(deg_1_cons_r))
         lambda_2_left_right = prog.NewContinuousVariables(len(deg_1_cons_r), len(deg_1_cons_r) )
 
+        prog.AddLinearConstraint(ge(lambda_2_left, 0))
+        prog.AddLinearConstraint(ge(lambda_2_right, 0))
+        prog.AddLinearConstraint(ge(lambda_2_left_right, 0))
+
+        self.lambda_0 = lambda_0
         self.lambda_1_left = lambda_1_left
         self.lambda_1_right = lambda_1_right
         self.lambda_2_left = lambda_2_left
         self.lambda_2_right = lambda_2_right
-
-        prog.AddLinearConstraint(ge(lambda_2_left, 0))
-        prog.AddLinearConstraint(ge(lambda_2_right, 0))
-        prog.AddLinearConstraint(ge(lambda_2_left_right, 0))
+        self.lambda_2_left_right = lambda_2_left_right
 
 
         s_procedure += np.sum( ( Bl.dot( np.outer(x_and_1, x_and_1) ).dot(Bl.T)) * lambda_2_left )
@@ -269,15 +265,14 @@ class DualEdge:
         s_procedure += np.sum( ( Bl.dot( np.outer(x_and_1, y_and_1) ).dot(Br.T) ) * lambda_2_left_right )
 
         self.delta = 0.0
+
+        # TODO: FIX ME HERE -- handle all cases
+
         if self.add_noise:
             self.delta = prog.NewContinuousVariables(1)[0]
             prog.AddLinearConstraint(self.delta>= 0)
             prog.AddLinearConstraint(self.gamma - self.delta + np.sum( (Br.dot(self.noise_mat).dot(Br.T)) * lambda_2_right ) <= 0)
 
-        # -------------------------------------------------
-        # obtain right and left potentials
-        right_potential = self.right.potential.ToExpression()
-        left_potential = self.left.potential.ToExpression()
 
         # -------------------------------------------------
         # form the entire expression
@@ -286,7 +281,7 @@ class DualEdge:
 
 
 class PolynomialDualGCS:
-    def __init__(self, solver_for_spp = None) -> None:
+    def __init__(self, options:ProgramOptions) -> None:
         # variables creates for policy synthesis
         self.vertices = dict()  # type: T.Dict[str, Vertex]
         self.edges = dict()  # type: T.Dict[str, Edge]
@@ -300,13 +295,13 @@ class PolynomialDualGCS:
         self.gcs = GraphOfConvexSets()  # type: GraphOfConvexSets
         # i'm adding an arbitary target vertex that terminates any process
         self.gcs_vertices["target"] = self.gcs.AddVertex(Point([0]), "target")
-        self.solver_for_spp = solver_for_spp 
+        self.options = options
 
     def AddVertex(
         self,
         name: str,
         convex_set: HPolyhedron,
-        pot_type=PSD_POLY
+        options = None
     ):
         """
         Options will default to graph initialized options if not specified
