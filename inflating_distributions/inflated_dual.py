@@ -246,9 +246,9 @@ class DualEdge:
         Br = self.right.B
 
         # deg 0 
-        # lambda_0 = prog.NewContinuousVariables(1)[0]
-        # prog.AddLinearConstraint(lambda_0 >= 0)
-        # s_procedure += lambda_0
+        lambda_0 = prog.NewContinuousVariables(1)[0]
+        prog.AddLinearConstraint(lambda_0 >= 0)
+        s_procedure += lambda_0
 
         # deg 1
         deg_1_cons_l = Bl.dot(x_and_1)
@@ -269,7 +269,7 @@ class DualEdge:
         prog.AddLinearConstraint(ge(lambda_2_right, 0))
         prog.AddLinearConstraint(ge(lambda_2_left_right, 0))
 
-        # self.lambda_0 = lambda_0
+        self.lambda_0 = lambda_0
         self.lambda_1_left = lambda_1_left
         self.lambda_1_right = lambda_1_right
         self.lambda_2_left = lambda_2_left
@@ -288,14 +288,21 @@ class DualEdge:
         assert np.sum([self.options.solve_ot, 
                        self.options.solve_ot_stochastic_transitions, 
                        self.options.solve_ot_relaxed_stochastic_transitions,
-                       self.options.solve_ot_deterministic_transitions_inflated
+                       self.options.solve_ot_deterministic_transitions_inflated,
+                       self.options.solve_robustified_set_membership
                        ]) == 1, "more than 1 solve option set"
 
         noise_terms = Expression(0)
         if self.options.solve_ot or self.force_deterministic:
             pass
-        elif self.options.solve_ot_stochastic_transitions:
-            noise_terms += np.sum(self.noise_mat * self.right.J)
+
+        elif self.options.solve_robustified_set_membership: # 
+            if self.left.name != "s":
+                noise_terms -= np.sum( Bl.dot(self.noise_mat).dot(Bl.T) * lambda_2_left )
+            noise_terms -= np.sum( Br.dot(self.noise_mat).dot(Br.T) * lambda_2_right )
+
+        elif self.options.solve_ot_stochastic_transitions: # 
+            noise_terms += np.sum(self.noise_mat * self.right.J) 
             noise_terms -= np.sum( Br.dot(self.noise_mat).dot(Br.T) * lambda_2_right )
 
         elif self.options.solve_ot_relaxed_stochastic_transitions:
@@ -314,6 +321,8 @@ class DualEdge:
             con_expr += np.sum( (Br.dot(self.noise_mat).dot(Br.T)) * lambda_2_right )
             con_expr += self.options.gamma - self.delta
             prog.AddLinearConstraint(con_expr <= 0)
+        else:
+            raise Exception("unspecified solve option")
 
         # -------------------------------------------------
         # form the entire expression
@@ -690,6 +699,13 @@ class PolynomialDualGCS:
                     s_procedure_terms -= self.value_function_solution.GetSolution(edge.delta)
                 elif self.options.solve_ot_stochastic_transitions:
                     Sigma = edge.noise_mat
+                    s_procedure_terms -= np.sum( Br.dot(Sigma).dot(Br.T) * Qr) 
+                elif self.options.solve_robustified_set_membership:
+                    Sigma = edge.noise_mat
+                    if edge.left.name != "s":
+                        Ql = self.value_function_solution.GetSolution(edge.lambda_2_left)
+                        Bl = edge.left.B
+                        s_procedure_terms -= np.sum( Bl.dot(Sigma).dot(Bl.T) * Ql) 
                     s_procedure_terms -= np.sum( Br.dot(Sigma).dot(Br.T) * Qr) 
 
             if self.options.policy_subtract_full_s_procedure:

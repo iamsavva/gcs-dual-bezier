@@ -27,13 +27,14 @@ class ProgramOptions:
         self.solve_ot_stochastic_transitions = False
         self.solve_ot_relaxed_stochastic_transitions = False
         self.solve_ot_deterministic_transitions_inflated = False
+        self.solve_robustified_set_membership = False
 
         self.gamma = 1
         self.noise_magnitude = 1
 
         self.policy_subtract_full_s_procedure = False
         self.policy_subtract_right_vertex_s_procedure = False
-        
+
         self.policy_lookahead = 1
         self.policy_use_gcs = True
 
