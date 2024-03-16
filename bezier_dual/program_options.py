@@ -35,10 +35,13 @@ class ProgramOptions:
 
         # ---------------------------------------------
         # parameters specific to bezier
-        self.num_control_points = 1
+        self.num_control_points = 3
+        self.policy_add_G_term = False
+
+
 
     def test_options(self):
-        assert self.num_control_points >= 1, "need at least 1 control point in the interior, 3 total"
+        assert self.num_control_points >= 3, "need at least 1 control point in the interior, 3 total"
         assert self.policy_lookahead >= 1, "lookahead must be positive"
         assert self.pot_type in (FREE_POLY, PSD_POLY, CONVEX_POLY), "undefined potential"
 

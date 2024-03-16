@@ -63,15 +63,16 @@ class DualVertex:
         convex_set: ConvexSet,
         options: ProgramOptions,
         specific_J_matrix: npt.NDArray = None,
-        vertex_is_start_or_target: bool = False
+        vertex_is_start: bool = False,
+        vertex_is_target: bool = False
     ):
         self.name = name
         self.potential_poly_deg = 2 # type: int
         self.options = options
-        self.vertex_is_start_or_target = vertex_is_start_or_target
+        self.vertex_is_start = vertex_is_start
+        self.vertex_is_target = vertex_is_target
         self.potential = Expression(0)
         self.J_matrix = np.zeros((1,1))
-        self.G_poly = Expression(0)
 
         # TODO: handle ellipsoids exactly
         # TODO: handle points exactly
@@ -111,6 +112,7 @@ class DualVertex:
         self.edges_in.append(name)
 
     def add_edge_out(self, name: str):
+        assert not self.vertex_is_target, "adding an edge to a target vertex"
         assert name not in self.edges_out
         self.edges_out.append(name)
 
@@ -138,7 +140,7 @@ class DualVertex:
         self.J_matrix, self.potential = define_quadratic_polynomial(prog, self.x, self.options.pot_type, specific_J_matrix)
         
         # define G -- the bezier curve continuity vector
-        if self.vertex_is_start_or_target:
+        if self.vertex_is_target or self.vertex_is_start:
             self.G_matrix = np.zeros((self.state_dim+1, self.state_dim+1))
             self.eval_G = lambda x: Expression(0)
         else:
@@ -248,9 +250,9 @@ class DualEdge:
         
         # -----------------------------------------------
         # -----------------------------------------------
-        # define n potentials (at least 1 intermediary point in the set)
+        # define n-2 intermediate potentials (at least 1 intermediary point in the set)
 
-        for k in range(self.options.num_control_points):
+        for k in range(self.options.num_control_points-2):
             x = prog.NewIndeterminates(self.left.state_dim)
             J_matrix, potential = define_quadratic_polynomial(prog, x, self.options.pot_type)
             self.x_vectors.append(x)
@@ -281,7 +283,7 @@ class DualEdge:
 
         # -------------------------------------------------
         # J_{vw, k} to J_{vw,k+1}
-        for k in range(self.options.num_control_points-1):
+        for k in range(self.options.num_control_points-3):
             x_left, x_right = self.x_vectors[k], self.x_vectors[k+1]
             B_left, B_right = self.left.B, self.left.B
             edge_cost = self.cost_function(x_left, x_right)
@@ -293,7 +295,7 @@ class DualEdge:
 
         # -------------------------------------------------
         # J_{vw, n} to J_{w}
-        n = self.options.num_control_points-1
+        n = self.options.num_control_points-3
         x_left, x_right = self.x_vectors[n], self.right.x
         B_left, B_right = self.left.B, self.B_intersection
         edge_cost = self.cost_function(x_left, x_right)
@@ -313,7 +315,7 @@ class PolynomialDualGCS:
         self.vertices = dict()  # type: T.Dict[str, DualVertex]
         self.edges = dict()  # type: T.Dict[str, DualEdge]
         self.prog = MathematicalProgram()  # type: MathematicalProgram
-        self.value_function_solution = None
+        self.value_function_solution = None # type: MathematicalProgramResult
 
         self.options = options
 
@@ -322,7 +324,7 @@ class PolynomialDualGCS:
         name: str,
         convex_set: ConvexSet,
         options = None,
-        is_a_start_vertex:bool = False
+        vertex_is_start:bool = False
     ):
         """
         Options will default to graph initialized options if not specified
@@ -331,7 +333,7 @@ class PolynomialDualGCS:
         if options is None:
             options = self.options
         # add vertex to policy graph
-        v = DualVertex(name, self.prog, convex_set, options=options, vertex_is_start_or_target=is_a_start_vertex)
+        v = DualVertex(name, self.prog, convex_set, options=options, vertex_is_start=vertex_is_start)
         self.vertices[name] = v
         return v
 
@@ -371,7 +373,7 @@ class PolynomialDualGCS:
             convex_set,
             options = options,
             specific_J_matrix=specific_J_matrix,
-            vertex_is_start_or_target=True
+            vertex_is_target=True
         )
         # building proper GCS
         self.vertices[name] = v
