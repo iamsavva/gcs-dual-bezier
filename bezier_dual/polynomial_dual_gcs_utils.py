@@ -96,7 +96,8 @@ def define_sos_constraint_over_polyhedron(prog:MathematicalProgram,
                                             right_vars:npt.NDArray, 
                                             function: Expression, 
                                             B_left:npt.NDArray, 
-                                            B_right:npt.NDArray):
+                                            B_right:npt.NDArray,
+                                            ):
     
     s_procedure = Expression(0)
 

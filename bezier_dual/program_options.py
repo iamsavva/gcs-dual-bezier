@@ -23,6 +23,12 @@ class ProgramOptions:
         # potential type
         self.pot_type = FREE_POLY
         self.zero_offset = 50
+    
+        self.max_flow_through_edge = 1
+
+        self.use_robust_mosek_parameters = True
+
+
 
         self.policy_lookahead = 1
         self.policy_use_gcs = True
@@ -33,10 +39,13 @@ class ProgramOptions:
         self.MSK_DPAR_INTPNT_CO_TOL_PFEAS = 1e-8
         self.MSK_DPAR_INTPNT_CO_TOL_DFEAS = 1e-8
 
+
         # ---------------------------------------------
         # parameters specific to bezier
         self.num_control_points = 3
         self.policy_add_G_term = False
+        self.policy_no_vertex_revisits = True
+        self.policy_min_cost = True 
 
 
 

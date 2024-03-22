@@ -233,6 +233,7 @@ def plot_a_layered_graph_1d(layers:T.List[T.List[DualVertex]]):
     return fig
 
 def plot_a_2d_graph(vertices = T.List[DualVertex]):
+    # TODO: assumes that vertices are
     fig = go.Figure()
     def add_trace(lb, ub):
         xs = [lb[0], lb[0], ub[0], ub[0], lb[0]]
@@ -241,12 +242,21 @@ def plot_a_2d_graph(vertices = T.List[DualVertex]):
 
     for v in vertices:
         add_trace(v.convex_set.lb(), v.convex_set.ub())
+        center = (v.convex_set.lb() + v.convex_set.ub())/2
+        fig.add_trace(go.Scatter(
+            x=[center[0]],
+            y=[center[1]],
+            mode='text',
+            text=[v.name],
+            showlegend=False
+        ))
 
     fig.update_layout(height=800, width=800, title_text="Graph view")
     fig.update_layout(
         yaxis=dict(scaleanchor="x"),  # set y-axis to have the same scaling as x-axis
         yaxis2=dict(scaleanchor="x", overlaying="y", side="right"),  # set y-axis2 to have the same scaling as x-axis
     )
+
     return fig
 
 def plot_policy_rollout_1d(gcs:PolynomialDualGCS, layers:T.List[T.List[DualVertex]], m:int, vertex:DualVertex, layer_index:int, fig:go.Figure, point:npt.NDArray):

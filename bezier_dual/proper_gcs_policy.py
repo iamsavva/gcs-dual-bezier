@@ -79,9 +79,37 @@ def get_all_n_step_paths(graph: PolynomialDualGCS, start_lookahead:int, start_ve
     return paths
 
 
+# implement policy without revisits
+def get_all_n_step_paths_no_revisits(graph: PolynomialDualGCS, start_lookahead:int, start_vertex: DualVertex, already_visited=T.List[DualVertex])->T.List[T.List[DualVertex]]:
+    """
+    find every n-step path without revisits
+    there isn't actually a way to incorporate that on the policy level. must add as constraint.
+    there is a heuristic
+    """
+    paths = [] # type: T.List[T.List[DualVertex]]
+    vertex_expand_que = deque( [(start_vertex, [start_vertex], start_lookahead)] )
+    while len(vertex_expand_que) > 0:
+        vertex, path, lookahead = vertex_expand_que.pop() 
+        # ran out of lookahead -- stop
+        if lookahead == 0:
+            paths.append(path)
+        else:
+
+            if vertex.vertex_is_target:
+                paths.append(path)
+            else:
+                for edge_name in vertex.edges_out:
+                    right_vertex = graph.edges[edge_name].right
+                    # don't do revisits
+                    if right_vertex not in path and right_vertex not in already_visited:
+                        vertex_expand_que.append( (right_vertex, path + [right_vertex], lookahead-1) )
+    return paths
+
+
 def get_all_n_step_vertices_and_edges(graph: PolynomialDualGCS, start_lookahead:int, start_vertex: DualVertex) -> T.Tuple[T.List[DualVertex], T.List[DualEdge]]:
     """
     find every vertex and edge in a n step radius
+    NOTE: this will prove useful when writing GCS controller
     """
     vertices = [start_vertex] # type: T.List[DualVertex]
     edges = []# type: T.List[DualEdge]
@@ -131,6 +159,7 @@ def solve_convex_restriction(graph: PolynomialDualGCS, path: T.List[DualVertex],
             f_potential = lambda x: potential.Substitute({vertex.x[i]: x[i] for i in range(vertex.state_dim)})
             prog.AddCost(f_potential(last_x))
             
+            # NOTE: UNCOMMENT THIS FOR SMOOTH TRAJECTORIES
             # assert that next point is feasible
             if not vertex.vertex_is_target:
                 prog.AddLinearConstraint(ge(vertex.B.dot(np.hstack(([1], last_x + last_delta))), 0))
@@ -160,6 +189,7 @@ def solve_convex_restriction(graph: PolynomialDualGCS, path: T.List[DualVertex],
                 # quadratic cost with previous point
                 prog.AddQuadraticCost( edge.cost_function(last_x, x_j) )
 
+                # NOTE: UNCOMMENT THIS FOR SMOOTH TRAJECTORIES
                 # if the point is the first knot point in this set -- add the bezier continuity constraint
                 if j == 1 and last_delta is not None:
                     prog.AddLinearConstraint(eq(x_j - last_x, last_delta))
@@ -169,9 +199,70 @@ def solve_convex_restriction(graph: PolynomialDualGCS, path: T.List[DualVertex],
                     last_delta = x_j - last_x
                 last_x = x_j
             bezier_curves.append(bezier_curve)
+
+            if i == len(path)-2:
+                prog.AddCost(graph.value_function_solution.GetSolution(edge.bidirection_edge_violation))
     
     solution = Solve(prog)
     if solution.is_success():
         return solution.get_optimal_cost(), [solution.GetSolution(bezier_curve) for bezier_curve in bezier_curves]
     else:
         return np.inf, []
+
+
+# ---
+
+
+def get_k_step_optimal_path(gcs:PolynomialDualGCS, vertex:DualVertex, state:npt.NDArray, last_state:npt.NDArray=None, options:ProgramOptions = None, already_visited: T.List[DualVertex] = []):
+
+    actual_cost = vertex.cost_at_point(state, gcs.value_function_solution)
+    # print(actual_cost)
+    if options is None:
+        options = gcs.options
+    if options.policy_no_vertex_revisits:
+        vertex_paths = get_all_n_step_paths_no_revisits(gcs, options.policy_lookahead, vertex, already_visited)
+    else:
+        vertex_paths = get_all_n_step_paths(gcs, options.policy_lookahead, vertex)
+    best_cost, best_path, best_vertex_path = np.inf, None, None
+    for vertex_path in vertex_paths:
+        cost, bezier_curves = solve_convex_restriction(gcs, vertex_path, state, last_state, options)
+        # print(cost, [vertex.name for vertex in vertex_path])
+        if options.policy_min_cost:
+            if cost < best_cost:
+                best_cost, best_path, best_vertex_path = cost, bezier_curves, vertex_path
+        else:
+            if np.abs(cost-actual_cost) < np.abs(best_cost-actual_cost):
+                best_cost, best_path, best_vertex_path = cost, bezier_curves, vertex_path
+    return best_cost, best_path, best_vertex_path
+
+def rollout_the_policy(gcs:PolynomialDualGCS, vertex:DualVertex, state:npt.NDArray, last_state:npt.NDArray=None, options:ProgramOptions = None):
+    if options is None:
+        options = gcs.options
+    vertex_now, state_now, state_last = vertex, state, last_state
+
+    full_path = []
+    vertex_path_so_far = [vertex_now]
+
+    while not vertex_now.vertex_is_target:
+        _, bezier_path, vertex_path = get_k_step_optimal_path(gcs, vertex_now, state_now, state_last, options, already_visited=vertex_path_so_far)
+        # print(bezier_path, vertex_path )
+        first_segment = bezier_path[0]
+        full_path.append(first_segment)
+        vertex_now, state_now, state_last = vertex_path[1], first_segment[-1], first_segment[-2]
+        vertex_path_so_far.append(vertex_now)
+        # print(vertex_now.name, state_now)
+    return full_path
+
+def plot_optimal_and_rollout(fig: go.Figure, gcs:PolynomialDualGCS, lookahead: int, vertex:DualVertex, state:npt.NDArray, last_state:npt.NDArray=None):
+    options = gcs.options
+    options.policy_lookahead = lookahead
+    options.policy_add_G_term=False
+    rollout_path = rollout_the_policy(gcs, vertex, state, last_state, options)
+    options.policy_add_G_term=True
+    rollout_path_with_G = rollout_the_policy(gcs, vertex, state, last_state, options)
+    options.policy_lookahead=10
+    _, optimal_path, _ = get_k_step_optimal_path(gcs, vertex, state, last_state, options)
+    plot_bezier(fig, rollout_path, "red", "red", name="rollout")
+    plot_bezier(fig, rollout_path_with_G, "purple", "purple", name="rollout with G")
+    plot_bezier(fig, optimal_path, "blue", "blue", name="optimal")
+
