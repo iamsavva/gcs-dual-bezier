@@ -279,7 +279,7 @@ class DualEdge:
         left_potential = self.left.potential
         right_potential = self.potentials[0]
 
-        expr = edge_cost + right_potential - left_potential - G_of_v
+        expr = edge_cost + right_potential - left_potential - G_of_v+ self.bidirection_edge_violation/self.options.num_control_points
         # print(edge_cost.Expand())
         # print(right_potential.Expand())
         # print(left_potential.Expand())
@@ -295,7 +295,7 @@ class DualEdge:
             left_potential = self.potentials[k]
             right_potential = self.potentials[k+1]
 
-            expr = edge_cost + right_potential - left_potential
+            expr = edge_cost + right_potential - left_potential+ self.bidirection_edge_violation/self.options.num_control_points
             define_sos_constraint_over_polyhedron(prog, x_left, x_right, expr, B_left, B_right)
 
         # -------------------------------------------------
@@ -309,7 +309,7 @@ class DualEdge:
         right_potential = self.right.potential
 
         # NOTE: adding bidriectional edge violation just to the last constraint
-        expr = edge_cost + right_potential + G_of_v - left_potential + self.bidirection_edge_violation
+        expr = edge_cost + right_potential + G_of_v - left_potential + self.bidirection_edge_violation/self.options.num_control_points
         define_sos_constraint_over_polyhedron(prog, x_left, x_right, expr, B_left, B_right)
 
 

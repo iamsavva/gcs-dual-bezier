@@ -235,6 +235,8 @@ def get_k_step_optimal_path(gcs:PolynomialDualGCS, vertex:DualVertex, state:npt.
                 best_cost, best_path, best_vertex_path = cost, bezier_curves, vertex_path
     return best_cost, best_path, best_vertex_path
 
+
+
 def rollout_the_policy(gcs:PolynomialDualGCS, vertex:DualVertex, state:npt.NDArray, last_state:npt.NDArray=None, options:ProgramOptions = None):
     if options is None:
         options = gcs.options
@@ -258,11 +260,11 @@ def plot_optimal_and_rollout(fig: go.Figure, gcs:PolynomialDualGCS, lookahead: i
     options.policy_lookahead = lookahead
     options.policy_add_G_term=False
     rollout_path = rollout_the_policy(gcs, vertex, state, last_state, options)
-    options.policy_add_G_term=True
-    rollout_path_with_G = rollout_the_policy(gcs, vertex, state, last_state, options)
+    # options.policy_add_G_term=True
+    # rollout_path_with_G = rollout_the_policy(gcs, vertex, state, last_state, options)
     options.policy_lookahead=10
     _, optimal_path, _ = get_k_step_optimal_path(gcs, vertex, state, last_state, options)
     plot_bezier(fig, rollout_path, "red", "red", name="rollout")
-    plot_bezier(fig, rollout_path_with_G, "purple", "purple", name="rollout with G")
+    # plot_bezier(fig, rollout_path_with_G, "purple", "purple", name="rollout with G")
     plot_bezier(fig, optimal_path, "blue", "blue", name="optimal")
 
