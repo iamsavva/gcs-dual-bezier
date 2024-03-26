@@ -108,7 +108,6 @@ class DualVertex:
         if self.set_type == Hyperrectangle:
             return self.convex_set.MakeHPolyhedron()
 
-
     def add_edge_in(self, name: str):
         assert name not in self.edges_in
         self.edges_in.append(name)
@@ -121,6 +120,10 @@ class DualVertex:
     def define_variables(self, prog: MathematicalProgram):
         self.x = prog.NewIndeterminates(self.state_dim, "x_" + self.name)
         self.vars = Variables(self.x)
+
+        self.total_flow_in_violation = prog.NewContinuousVariables(1)[0]
+        prog.AddLinearConstraint(self.total_flow_in_violation >= 0)
+        prog.AddLinearCost(self.total_flow_in_violation * self.options.max_flow_through_edge)
 
     def define_set_inequalities(self):
         """
@@ -189,9 +192,7 @@ class DualVertex:
             for i in range(self.state_dim):
                 x_min, x_max, x_val = lb[i], ub[i], self.x[i]
                 integral_of_poly = poly.Integrate(x_val)
-                poly = integral_of_poly.EvaluatePartial(
-                    {x_val: x_max}
-                ) - integral_of_poly.EvaluatePartial({x_val: x_min})
+                poly = (integral_of_poly.EvaluatePartial({x_val: x_max}) - integral_of_poly.EvaluatePartial({x_val: x_min})) / (x_max-x_min)
             expectation += coef * poly.ToExpression()
 
         if solution is None:
@@ -203,9 +204,7 @@ class DualVertex:
         self, point: npt.NDArray, solution: MathematicalProgramResult = None, eps=0.001
     ):
         assert len(point) == self.state_dim
-        return self.cost_of_uniform_integral_over_box(
-            point - eps, point + eps, solution
-        )
+        return self.cost_of_uniform_integral_over_box(point - eps, point + eps, solution)
 
 
 class DualEdge:
@@ -217,7 +216,7 @@ class DualEdge:
         prog: MathematicalProgram,
         cost_function: T.Callable,
         options: ProgramOptions,
-        bidirection_edge_violation = Expression(0)
+        bidirectional_edge_violation = Expression(0)
     ):
         self.name = name
         self.left = v_left
@@ -227,7 +226,7 @@ class DualEdge:
         self.options = options
 
         self.B_intersection = self.intersect_left_right_sets()
-        self.bidirection_edge_violation = bidirection_edge_violation
+        self.bidirectional_edge_violation = bidirectional_edge_violation
 
         self.define_edge_polynomials_and_sos_constraints(prog)
 
@@ -279,7 +278,8 @@ class DualEdge:
         left_potential = self.left.potential
         right_potential = self.potentials[0]
 
-        expr = edge_cost + right_potential - left_potential - G_of_v+ self.bidirection_edge_violation/self.options.num_control_points
+        # expr = edge_cost + right_potential - left_potential - G_of_v+ self.bidirectional_edge_violation/(self.options.num_control_points-1)
+        expr = edge_cost + right_potential - left_potential - G_of_v
         # print(edge_cost.Expand())
         # print(right_potential.Expand())
         # print(left_potential.Expand())
@@ -295,7 +295,8 @@ class DualEdge:
             left_potential = self.potentials[k]
             right_potential = self.potentials[k+1]
 
-            expr = edge_cost + right_potential - left_potential+ self.bidirection_edge_violation/self.options.num_control_points
+            # expr = edge_cost + right_potential - left_potential+ self.bidirectional_edge_violation/(self.options.num_control_points-1)
+            expr = edge_cost + right_potential - left_potential
             define_sos_constraint_over_polyhedron(prog, x_left, x_right, expr, B_left, B_right)
 
         # -------------------------------------------------
@@ -309,7 +310,8 @@ class DualEdge:
         right_potential = self.right.potential
 
         # NOTE: adding bidriectional edge violation just to the last constraint
-        expr = edge_cost + right_potential + G_of_v - left_potential + self.bidirection_edge_violation/self.options.num_control_points
+        # expr = edge_cost + right_potential + G_of_v - left_potential + self.bidirectional_edge_violation/(self.options.num_control_points-1)
+        expr = edge_cost + right_potential + G_of_v - left_potential + self.bidirectional_edge_violation + self.right.total_flow_in_violation
         define_sos_constraint_over_polyhedron(prog, x_left, x_right, expr, B_left, B_right)
 
 
@@ -398,6 +400,7 @@ class PolynomialDualGCS:
         if options is None:
             options = self.options
         bidirectional_edge_violation = self.prog.NewContinuousVariables(1)[0]
+        self.prog.AddLinearConstraint(bidirectional_edge_violation >= 0) # TODO: shouldn't be necessary?
         self.prog.AddLinearCost(bidirectional_edge_violation * self.options.max_flow_through_edge)
         self.AddEdge(v_left, v_right, cost_function, options, bidirectional_edge_violation)
         self.AddEdge(v_right, v_left, cost_function, options, bidirectional_edge_violation)
@@ -410,7 +413,7 @@ class PolynomialDualGCS:
         v_right: DualVertex,
         cost_function: T.Callable,
         options: ProgramOptions = None,
-        bidirection_edge_violation = Expression(0),
+        bidirectional_edge_violation = Expression(0),
     ):
         """
         Options will default to graph initialized options if not specified
@@ -425,7 +428,7 @@ class PolynomialDualGCS:
             self.prog,
             cost_function,
             options=options,
-            bidirection_edge_violation = bidirection_edge_violation,
+            bidirectional_edge_violation = bidirectional_edge_violation,
         )
         self.edges[edge_name] = e
         v_left.add_edge_out(edge_name)

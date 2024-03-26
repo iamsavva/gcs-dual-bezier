@@ -201,7 +201,7 @@ def solve_convex_restriction(graph: PolynomialDualGCS, path: T.List[DualVertex],
             bezier_curves.append(bezier_curve)
 
             if i == len(path)-2:
-                prog.AddCost(graph.value_function_solution.GetSolution(edge.bidirection_edge_violation))
+                prog.AddCost(graph.value_function_solution.GetSolution(edge.bidirectional_edge_violation))
     
     solution = Solve(prog)
     if solution.is_success():
@@ -216,7 +216,6 @@ def solve_convex_restriction(graph: PolynomialDualGCS, path: T.List[DualVertex],
 def get_k_step_optimal_path(gcs:PolynomialDualGCS, vertex:DualVertex, state:npt.NDArray, last_state:npt.NDArray=None, options:ProgramOptions = None, already_visited: T.List[DualVertex] = []):
 
     actual_cost = vertex.cost_at_point(state, gcs.value_function_solution)
-    # print(actual_cost)
     if options is None:
         options = gcs.options
     if options.policy_no_vertex_revisits:
@@ -226,7 +225,6 @@ def get_k_step_optimal_path(gcs:PolynomialDualGCS, vertex:DualVertex, state:npt.
     best_cost, best_path, best_vertex_path = np.inf, None, None
     for vertex_path in vertex_paths:
         cost, bezier_curves = solve_convex_restriction(gcs, vertex_path, state, last_state, options)
-        # print(cost, [vertex.name for vertex in vertex_path])
         if options.policy_min_cost:
             if cost < best_cost:
                 best_cost, best_path, best_vertex_path = cost, bezier_curves, vertex_path
@@ -258,7 +256,7 @@ def rollout_the_policy(gcs:PolynomialDualGCS, vertex:DualVertex, state:npt.NDArr
 def plot_optimal_and_rollout(fig: go.Figure, gcs:PolynomialDualGCS, lookahead: int, vertex:DualVertex, state:npt.NDArray, last_state:npt.NDArray=None):
     options = gcs.options
     options.policy_lookahead = lookahead
-    options.policy_add_G_term=False
+    # options.policy_add_G_term=False
     rollout_path = rollout_the_policy(gcs, vertex, state, last_state, options)
     # options.policy_add_G_term=True
     # rollout_path_with_G = rollout_the_policy(gcs, vertex, state, last_state, options)
