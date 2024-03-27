@@ -42,8 +42,8 @@ class ProgramOptions:
         # parameters specific to bezier
         self.num_control_points = 3
         self.policy_add_G_term = False
-        self.policy_no_vertex_revisits = True
-        self.policy_min_cost = True
+        # self.policy_no_vertex_revisits = True # depricated
+        # self.policy_min_cost = True # depricated
 
         self.policy_add_total_flow_in_violation_penalty = False
 

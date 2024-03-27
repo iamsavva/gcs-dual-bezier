@@ -261,12 +261,9 @@ def get_k_step_optimal_path(
     if options is None:
         options = gcs.options
     # get all possible n-step paths from current vertex -- with or without revisits
-    if options.policy_no_vertex_revisits:
-        vertex_paths = get_all_n_step_paths_no_revisits(
-            gcs, options.policy_lookahead, vertex, already_visited
-        )
-    else:
-        vertex_paths = get_all_n_step_paths(gcs, options.policy_lookahead, vertex)
+    vertex_paths = get_all_n_step_paths_no_revisits(
+        gcs, options.policy_lookahead, vertex, already_visited
+    )
     # for every path -- solve convex restriction
     best_cost, best_path, best_vertex_path = np.inf, None, None
     for vertex_path in vertex_paths:
@@ -275,11 +272,7 @@ def get_k_step_optimal_path(
             print([v.name for v in vertex_path], cost)
         # maintain the best path / choice
         if cost < best_cost:
-            best_cost, best_path, best_vertex_path = (
-                cost,
-                bezier_curves,
-                vertex_path,
-            )
+            best_cost, best_path, best_vertex_path = cost, bezier_curves, vertex_path
     if options.policy_verbose_choices:
         print("----")
     return best_cost, best_path, best_vertex_path
