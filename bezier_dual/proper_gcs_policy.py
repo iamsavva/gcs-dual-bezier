@@ -298,7 +298,7 @@ def get_path_cost(
     return cost
 
 
-def lookahead_rollout_policy(
+def lookahead_policy(
     gcs: PolynomialDualGCS,
     vertex: DualVertex,
     initial_state: npt.NDArray,
@@ -361,7 +361,24 @@ def lookahead_rollout_policy(
     return full_path
 
 
-def lookahead_rollout_with_backtracking_policy(
+class Node:
+    def __init__(self, vertex_now: DualVertex, state_now:npt.NDArray, state_last:npt.NDArray, bezier_path_so_far:T.List[T.List[npt.NDArray]], vertex_path_so_far:T.List[DualVertex]):
+        self.vertex_now = vertex_now
+        self.state_now = state_now
+        self.state_last = state_last
+        self.bezier_path_so_far = bezier_path_so_far
+        self.vertex_path_so_far = vertex_path_so_far
+
+    def extend(self, next_bezier_curve: T.List[npt.NDArray], next_vertex: DualVertex):
+        vertex_now = next_vertex
+        state_now = next_bezier_curve[-1]
+        state_last = next_bezier_curve[-2]
+        bezier_path_so_far = self.bezier_path_so_far + [next_bezier_curve]
+        vertex_path_so_far = self.vertex_path_so_far + [next_vertex]
+        return Node(vertex_now, state_now, state_last, bezier_path_so_far, vertex_path_so_far)
+
+
+def lookahead_with_backtracking_policy(
     gcs: PolynomialDualGCS,
     vertex: DualVertex,
     initial_state: npt.NDArray,
@@ -377,23 +394,6 @@ def lookahead_rollout_with_backtracking_policy(
     if options is None:
         options = gcs.options
 
-    class Node:
-        def __init__(self, vertex_now: DualVertex, state_now:npt.NDArray, state_last:npt.NDArray, bezier_path_so_far:T.List[T.List[npt.NDArray]], vertex_path_so_far:T.List[DualVertex]):
-            self.vertex_now = vertex_now
-            self.state_now = state_now
-            self.state_last = state_last
-            self.bezier_path_so_far = bezier_path_so_far
-            self.vertex_path_so_far = vertex_path_so_far
-
-        def extend(self, next_bezier_curve: T.List[npt.NDArray], next_vertex: DualVertex):
-            vertex_now = next_vertex
-            state_now = next_bezier_curve[-1]
-            state_last = next_bezier_curve[-2]
-            bezier_path_so_far = self.bezier_path_so_far + [next_bezier_curve]
-            vertex_path_so_far = self.vertex_path_so_far + [next_vertex]
-            return Node(vertex_now, state_now, state_last, bezier_path_so_far, vertex_path_so_far)
-
-
     # cost, current state, last state, current vertex, state path so far, vertex path so far
     decision_options = [ PriorityQueue() ]
     decision_options[0].put( (0, Node(vertex, initial_state, initial_previous_state, [], [vertex])) )
@@ -401,7 +401,7 @@ def lookahead_rollout_with_backtracking_policy(
 
     decision_index = 0
     found_target = False
-    final_node = None
+    target_node = None
 
     while not found_target:
         if decision_index == -1:
@@ -412,7 +412,7 @@ def lookahead_rollout_with_backtracking_policy(
             node = decision_options[decision_index].get()[1] # type: Node
             if node.vertex_now.vertex_is_target:
                 found_target = True
-                final_node = node
+                target_node = node
                 break
 
             if len(decision_options) == decision_index + 1:
@@ -431,15 +431,89 @@ def lookahead_rollout_with_backtracking_policy(
 
     if found_target:
         if options.verbose_restriction_improvement:
-            cost_before = get_path_cost(gcs, final_node.vertex_path_so_far, final_node.bezier_path_so_far)
+            cost_before = get_path_cost(gcs, target_node.vertex_path_so_far, target_node.bezier_path_so_far)
 
-        full_path = final_node.bezier_path_so_far
+        full_path = target_node.bezier_path_so_far
         # solve a convex restriction on the vertex sequence
         if options.postprocess_by_solving_restrction_on_mode_sequence:
-            _, full_path = solve_convex_restriction(gcs, final_node.vertex_path_so_far, initial_state, initial_previous_state, options)
+            _, full_path = solve_convex_restriction(gcs, target_node.vertex_path_so_far, initial_state, initial_previous_state, options)
             # verbose
             if options.verbose_restriction_improvement:
-                cost_after = get_path_cost(gcs, final_node.vertex_path_so_far, full_path)
+                cost_after = get_path_cost(gcs, target_node.vertex_path_so_far, full_path)
+                INFO(
+                    "path cost improved from",
+                    np.round(cost_before, 1),
+                    "to",
+                    np.round(cost_after, 1),
+                    "; original is",
+                    np.round((cost_before / cost_after - 1) * 100, 1),
+                    "% worse",
+                )
+        return full_path
+        
+    else:
+        WARN("no path from start vertex to target!")
+        return None
+    
+
+def cheap_a_star_policy(
+    gcs: PolynomialDualGCS,
+    vertex: DualVertex,
+    initial_state: npt.NDArray,
+    initial_previous_state: npt.NDArray = None,
+    options: ProgramOptions = None,
+) -> T.List[T.List[npt.NDArray]]:
+    """
+    K-step lookahead rollout policy.
+    If you reach a point from which no action is available --
+    -- backtrack to the last state when some action was available.
+    Returns a list of bezier curves. Each bezier curve is a list of control points (numpy arrays).
+    """
+    if options is None:
+        options = gcs.options
+
+    # cost, current state, last state, current vertex, state path so far, vertex path so far
+    que = PriorityQueue()
+    que.put( (0.0, Node(vertex, initial_state, initial_previous_state, [], [vertex]) ) )
+
+
+    found_target = False
+    target_node = None # type: Node
+
+    while not found_target:
+        
+        node = que.get()[1] # type: Node
+        if node.vertex_now.vertex_is_target:
+            found_target = True
+            target_node = node
+            break
+        else:
+            vertex_paths = get_all_n_step_paths_no_revisits(
+                gcs, options.policy_lookahead, node.vertex_now, node.vertex_path_so_far
+            )
+            # for every path -- solve convex restriction, add next states
+            for vertex_path in vertex_paths:
+                cost, bezier_curves = solve_convex_restriction(gcs, vertex_path, node.state_now, node.state_last, options)
+                # check if solution exists
+                if np.isfinite(cost):
+                    next_node = node.extend(bezier_curves[0], vertex_path[1])
+                    # evaluate the cost
+                    cost_of_path = get_path_cost(gcs, next_node.vertex_path_so_far, next_node.bezier_path_so_far)
+                    estimate_of_remainder = next_node.vertex_now.cost_at_point(next_node.state_now, gcs.value_function_solution)
+                    que.put( (cost_of_path+estimate_of_remainder, next_node) )
+
+
+    if found_target:
+        if options.verbose_restriction_improvement:
+            cost_before = get_path_cost(gcs, target_node.vertex_path_so_far, target_node.bezier_path_so_far)
+
+        full_path = target_node.bezier_path_so_far
+        # solve a convex restriction on the vertex sequence
+        if options.postprocess_by_solving_restrction_on_mode_sequence:
+            _, full_path = solve_convex_restriction(gcs, target_node.vertex_path_so_far, initial_state, initial_previous_state, options)
+            # verbose
+            if options.verbose_restriction_improvement:
+                cost_after = get_path_cost(gcs, target_node.vertex_path_so_far, full_path)
                 INFO(
                     "path cost improved from",
                     np.round(cost_before, 1),
@@ -471,10 +545,12 @@ def plot_optimal_and_rollout(
     options.policy_lookahead = lookahead
     options.vertify_options_validity()
 
-    if options.use_lookahead_rollout_policy:
-        rollout_path = lookahead_rollout_policy(gcs, vertex, state, last_state, options)
-    elif options.use_lookahead_rollout_with_backtracking_policy:
-        rollout_path = lookahead_rollout_with_backtracking_policy(gcs, vertex, state, last_state, options)
+    if options.use_lookahead_policy:
+        rollout_path = lookahead_policy(gcs, vertex, state, last_state, options)
+    elif options.use_lookahead_with_backtracking_policy:
+        rollout_path = lookahead_with_backtracking_policy(gcs, vertex, state, last_state, options)
+    elif options.use_cheap_a_star_policy:
+        rollout_path = cheap_a_star_policy(gcs, vertex, state, last_state, options)
 
     if rollout_path is None:
         return False

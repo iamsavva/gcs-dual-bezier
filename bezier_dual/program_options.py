@@ -54,9 +54,9 @@ class ProgramOptions:
 
         # ---
 
-        self.use_lookahead_rollout_policy = False
-        self.use_lookahead_rollout_with_backtracking_policy = False
-        self.use_cheap_a_star = False
+        self.use_lookahead_policy = False
+        self.use_lookahead_with_backtracking_policy = False
+        self.use_cheap_a_star_policy = False
 
     def vertify_options_validity(self):
         assert (
@@ -68,7 +68,7 @@ class ProgramOptions:
             PSD_POLY,
             CONVEX_POLY,
         ), "undefined potentia type"
-        policy_options = np.array([self.use_lookahead_rollout_policy, self.use_lookahead_rollout_with_backtracking_policy, self.use_cheap_a_star])
+        policy_options = np.array([self.use_lookahead_policy, self.use_lookahead_with_backtracking_policy, self.use_cheap_a_star_policy])
         assert not np.sum(policy_options) < 1, "must select policy lookahead option"
         assert not np.sum(policy_options) > 1, "selected multiple policy lookahead options"
 
