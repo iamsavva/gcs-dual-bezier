@@ -71,9 +71,7 @@ def control_policy(
     total_cost = 0
 
     # find all edges out of current vertex
-    edges_out = [
-        gcs.edges[name] for name in current_vertex.edges_out
-    ]  # type: T.List[Edge]
+    edges_out = [gcs.edges[name] for name in current_vertex.edges_out]  # type: T.List[Edge]
     results_out = []
 
     rolling_cost_function = make_quadratic_state_control_cost_function(
@@ -135,16 +133,10 @@ def control_policy(
                     # subject to constraints
                     try:
                         # control constraints
-                        prog.AddLinearConstraint(
-                            le(v0.control_set.A().dot(u0), v0.control_set.b())
-                        )
-                        prog.AddLinearConstraint(
-                            le(v1.control_set.A().dot(u1), v1.control_set.b())
-                        )
+                        prog.AddLinearConstraint(le(v0.control_set.A().dot(u0), v0.control_set.b()))
+                        prog.AddLinearConstraint(le(v1.control_set.A().dot(u1), v1.control_set.b()))
                         # state constraints
-                        prog.AddLinearConstraint(
-                            le(v1.state_set.A().dot(x1), v1.state_set.b())
-                        )
+                        prog.AddLinearConstraint(le(v1.state_set.A().dot(x1), v1.state_set.b()))
 
                         if (
                             horizon_index == options.N - 2
@@ -152,15 +144,11 @@ def control_policy(
                             # prog.AddLinearConstraint( le(v1.state_set.A().dot(x2), v1.state_set.b()) )
                             prog.AddCost(relaxed_final_cost_function(x2))
                         else:
-                            prog.AddLinearConstraint(
-                                le(v2.state_set.A().dot(x2), v2.state_set.b())
-                            )
+                            prog.AddLinearConstraint(le(v2.state_set.A().dot(x2), v2.state_set.b()))
 
                     except RuntimeError:
                         # failed to add constraints -- bc some constraints are infeasible.
-                        results_out.append(
-                            (float("inf"), None, None, None, float("inf"))
-                        )
+                        results_out.append((float("inf"), None, None, None, float("inf")))
                         continue
 
                     # solve with snopt
@@ -190,9 +178,7 @@ def control_policy(
                         )
                     else:
                         # failed to solve
-                        results_out.append(
-                            (float("inf"), None, None, None, float("inf"))
-                        )
+                        results_out.append((float("inf"), None, None, None, float("inf")))
 
             else:
                 # single step lookahead
@@ -217,18 +203,12 @@ def control_policy(
                 # subject to constraints
                 try:
                     # control constraints
-                    prog.AddLinearConstraint(
-                        le(v0.control_set.A().dot(u0), v0.control_set.b())
-                    )
+                    prog.AddLinearConstraint(le(v0.control_set.A().dot(u0), v0.control_set.b()))
                     # state constraints
-                    if (
-                        horizon_index == options.N - 1
-                    ) and options.relax_final_state_constraint:
+                    if (horizon_index == options.N - 1) and options.relax_final_state_constraint:
                         prog.AddCost(relaxed_final_cost_function(x1))
                     else:
-                        prog.AddLinearConstraint(
-                            le(v1.state_set.A().dot(x1), v1.state_set.b())
-                        )
+                        prog.AddLinearConstraint(le(v1.state_set.A().dot(x1), v1.state_set.b()))
                 except RuntimeError:
                     # failed to add constraints -- bc some constraints are infeasible.
                     results_out.append((float("inf"), None, None, None, float("inf")))
@@ -247,9 +227,7 @@ def control_policy(
                     min_cost_value = cost
                     if options.complimentary_slackness_policy:
                         min_cost_value = np.abs(cost - current_potential)
-                    results_out.append(
-                        (min_cost_value, v1, u_value, y_value, rolling_cost)
-                    )
+                    results_out.append((min_cost_value, v1, u_value, y_value, rolling_cost))
                 else:
                     if horizon_index >= 10:
                         WARN("solving", horizon_index, start_state)
@@ -279,9 +257,7 @@ def control_policy(
             # TODO: check me for bugs
             # get this edge in the graph
             mode_name = options.system.get_mode_for_point(current_state)
-            assert mode_name is not None, ERROR(
-                "current state inside no mode", current_state
-            )
+            assert mode_name is not None, ERROR("current state inside no mode", current_state)
             # get nonlinear dynamics for this edge
             next_state, next_mode_name = options.system.propagate_nonlinear(
                 current_state, result[2], options.dt
@@ -290,9 +266,7 @@ def control_policy(
                 return np.array(x_trajectory), np.array(u_trajectory), float("inf")
             # get current vertex
             if horizon_index < options.N - 1:
-                current_vertex = gcs.vertices[
-                    get_vertex_name(horizon_index + 1, next_mode_name)
-                ]
+                current_vertex = gcs.vertices[get_vertex_name(horizon_index + 1, next_mode_name)]
             current_state = next_state
             current_mode = next_mode_name
             x_trajectory.append(next_state)
@@ -300,9 +274,7 @@ def control_policy(
             mode_trajectory.append(next_mode_name)
             total_cost += result[4]
 
-        edges_out, results_out = [
-            gcs.edges[name] for name in current_vertex.edges_out
-        ], []
+        edges_out, results_out = [gcs.edges[name] for name in current_vertex.edges_out], []
         horizon_index += 1
 
     # add final state cost

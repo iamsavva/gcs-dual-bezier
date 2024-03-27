@@ -132,9 +132,7 @@ class PrimalBoxVertex(PrimalVertex):
         m0 = vecotrized_moment_compute(np.ones(1))
         m1 = vecotrized_moment_compute(vars)
         m2 = vecotrized_moment_compute(np.outer(vars, vars))
-        return np.vstack(
-            (np.hstack((m0, m1)), np.hstack((m1.reshape((len(m1), 1)), m2)))
-        )
+        return np.vstack((np.hstack((m0, m1)), np.hstack((m1.reshape((len(m1), 1)), m2))))
         # return m0[0], m1, m2
 
 
@@ -147,9 +145,9 @@ def compute_box_moment(lb: npt.NDArray, ub: npt.NDArray, vars: npt.NDArray, mome
     for i in range(state_dim):
         x_min, x_max, x_val = lb[i], ub[i], vars[i]
         integral_of_poly = poly.Integrate(x_val)
-        poly = integral_of_poly.EvaluatePartial(
-            {x_val: x_max}
-        ) - integral_of_poly.EvaluatePartial({x_val: x_min})
+        poly = integral_of_poly.EvaluatePartial({x_val: x_max}) - integral_of_poly.EvaluatePartial(
+            {x_val: x_min}
+        )
     poly = poly * p
     return float(poly.Evaluate(dict()))
 
@@ -239,24 +237,18 @@ class PrimalEdge:
             prog.AddLinearCost(-self.gamma * (self.eps_right + self.eps_left))
             # prog.AddLinearCost(-self.gamma * (self.eps_right) )
 
-    def add_constraints(
-        self, prog: MathematicalProgram, left: PrimalVertex, right: PrimalVertex
-    ):
+    def add_constraints(self, prog: MathematicalProgram, left: PrimalVertex, right: PrimalVertex):
         Bl = left.get_nonnegative_constraints_matrix()
         Br = right.get_nonnegative_constraints_matrix()
 
         if self.add_noise:
             noise_mat = self.eps_right * np.eye(1 + self.dim)
             noise_mat[0, 0] = 0
-            prog.AddLinearConstraint(
-                self.eps_right <= self.edge_measure[0, 0] * self.multiplier
-            )
+            prog.AddLinearConstraint(self.eps_right <= self.edge_measure[0, 0] * self.multiplier)
 
             noise_mat_left = self.eps_left * np.eye(1 + self.dim)
             noise_mat_left[0, 0] = 0
-            prog.AddLinearConstraint(
-                self.eps_left <= self.edge_measure[0, 0] * self.multiplier
-            )
+            prog.AddLinearConstraint(self.eps_left <= self.edge_measure[0, 0] * self.multiplier)
         else:
             noise_mat = np.zeros((1 + self.dim, 1 + self.dim))
             noise_mat_left = np.zeros((1 + self.dim, 1 + self.dim))
@@ -332,9 +324,7 @@ def plot_surface(
     Z = multivariate_gaussian(pos, mu, Sigma) * m0 * scaling
 
     # Create filled 3D contours
-    fig.add_trace(
-        go.Surface(x=X, y=Y, z=Z, surfacecolor=Z, name=name, cmin=0, cmax=cmax)
-    )
+    fig.add_trace(go.Surface(x=X, y=Y, z=Z, surfacecolor=Z, name=name, cmin=0, cmax=cmax))
 
     # Update layout
     fig.update_layout(scene=dict(xaxis_title="X", yaxis_title="Y", zaxis_title="Z"))

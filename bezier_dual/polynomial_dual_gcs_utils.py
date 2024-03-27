@@ -131,23 +131,15 @@ def define_sos_constraint_over_polyhedron(
     # deg 2
     lambda_2_left = prog.NewSymmetricContinuousVariables(len(deg_1_cons_l))
     lambda_2_right = prog.NewSymmetricContinuousVariables(len(deg_1_cons_r))
-    lambda_2_left_right = prog.NewContinuousVariables(
-        len(deg_1_cons_r), len(deg_1_cons_r)
-    )
+    lambda_2_left_right = prog.NewContinuousVariables(len(deg_1_cons_r), len(deg_1_cons_r))
 
     prog.AddLinearConstraint(ge(lambda_2_left, 0))
     prog.AddLinearConstraint(ge(lambda_2_right, 0))
     prog.AddLinearConstraint(ge(lambda_2_left_right, 0))
 
-    s_procedure += np.sum(
-        (Bl.dot(np.outer(x_and_1, x_and_1)).dot(Bl.T)) * lambda_2_left
-    )
-    s_procedure += np.sum(
-        (Br.dot(np.outer(y_and_1, y_and_1)).dot(Br.T)) * lambda_2_right
-    )
-    s_procedure += np.sum(
-        (Bl.dot(np.outer(x_and_1, y_and_1)).dot(Br.T)) * lambda_2_left_right
-    )
+    s_procedure += np.sum((Bl.dot(np.outer(x_and_1, x_and_1)).dot(Bl.T)) * lambda_2_left)
+    s_procedure += np.sum((Br.dot(np.outer(y_and_1, y_and_1)).dot(Br.T)) * lambda_2_right)
+    s_procedure += np.sum((Bl.dot(np.outer(x_and_1, y_and_1)).dot(Br.T)) * lambda_2_left_right)
 
     expr = function - s_procedure
     prog.AddSosConstraint(expr)

@@ -43,6 +43,7 @@ import plotly.graph_objs as go
 from plotly.subplots import make_subplots
 
 from collections import deque
+from queue import PriorityQueue
 
 from program_options import FREE_POLY, PSD_POLY, CONVEX_POLY, ProgramOptions
 
@@ -84,9 +85,7 @@ def get_all_n_step_paths(
             else:
                 for edge_name in vertex.edges_out:
                     right_vertex = graph.edges[edge_name].right
-                    vertex_expand_que.append(
-                        (right_vertex, path + [right_vertex], lookahead - 1)
-                    )
+                    vertex_expand_que.append((right_vertex, path + [right_vertex], lookahead - 1))
     return paths
 
 
@@ -191,9 +190,7 @@ def solve_convex_restriction(
             # NOTE: UNCOMMENT THIS FOR SMOOTH TRAJECTORIES
             # assert that next point is feasible
             if not vertex.vertex_is_target:
-                prog.AddLinearConstraint(
-                    ge(vertex.B.dot(np.hstack(([1], last_x + last_delta))), 0)
-                )
+                prog.AddLinearConstraint(ge(vertex.B.dot(np.hstack(([1], last_x + last_delta))), 0))
 
             if options.policy_add_G_term:
                 G_matrix = graph.value_function_solution.GetSolution(vertex.G_matrix)
@@ -206,9 +203,7 @@ def solve_convex_restriction(
 
             if options.policy_add_total_flow_in_violation_penalty:
                 prog.AddLinearCost(
-                    graph.value_function_solution.GetSolution(
-                        vertex.total_flow_in_violation
-                    )
+                    graph.value_function_solution.GetSolution(vertex.total_flow_in_violation)
                 )
 
         else:
@@ -221,9 +216,7 @@ def solve_convex_restriction(
                 # knot point inside a set
                 if j == options.num_control_points - 1:
                     # inside the intersection
-                    prog.AddLinearConstraint(
-                        ge(edge.B_intersection.dot(np.hstack(([1], x_j))), 0)
-                    )
+                    prog.AddLinearConstraint(ge(edge.B_intersection.dot(np.hstack(([1], x_j))), 0))
                 else:
                     # inside the vertex
                     prog.AddLinearConstraint(ge(vertex.B.dot(np.hstack(([1], x_j))), 0))
@@ -247,9 +240,7 @@ def solve_convex_restriction(
     solution = Solve(prog)
     if solution.is_success():
         optimization_cost = solution.get_optimal_cost()
-        bezier_solutions = [
-            solution.GetSolution(bezier_curve) for bezier_curve in bezier_curves
-        ]
+        bezier_solutions = [solution.GetSolution(bezier_curve) for bezier_curve in bezier_curves]
         return optimization_cost, bezier_solutions
     else:
         return np.inf, []
@@ -267,36 +258,28 @@ def get_k_step_optimal_path(
     already_visited: T.List[DualVertex] = [],
 ) -> T.Tuple[float, T.List[T.List[npt.NDArray]], T.List[DualVertex]]:
     """ """
-    actual_cost = vertex.cost_at_point(state, gcs.value_function_solution)
     if options is None:
         options = gcs.options
+    # get all possible n-step paths from current vertex -- with or without revisits
     if options.policy_no_vertex_revisits:
         vertex_paths = get_all_n_step_paths_no_revisits(
             gcs, options.policy_lookahead, vertex, already_visited
         )
     else:
         vertex_paths = get_all_n_step_paths(gcs, options.policy_lookahead, vertex)
+    # for every path -- solve convex restriction
     best_cost, best_path, best_vertex_path = np.inf, None, None
     for vertex_path in vertex_paths:
-        cost, bezier_curves = solve_convex_restriction(
-            gcs, vertex_path, state, last_state, options
-        )
+        cost, bezier_curves = solve_convex_restriction(gcs, vertex_path, state, last_state, options)
         if options.policy_verbose_choices:
             print([v.name for v in vertex_path], cost)
-        if options.policy_min_cost:
-            if cost < best_cost:
-                best_cost, best_path, best_vertex_path = (
-                    cost,
-                    bezier_curves,
-                    vertex_path,
-                )
-        else:
-            if np.abs(cost - actual_cost) < np.abs(best_cost - actual_cost):
-                best_cost, best_path, best_vertex_path = (
-                    cost,
-                    bezier_curves,
-                    vertex_path,
-                )
+        # maintain the best path / choice
+        if cost < best_cost:
+            best_cost, best_path, best_vertex_path = (
+                cost,
+                bezier_curves,
+                vertex_path,
+            )
     if options.policy_verbose_choices:
         print("----")
     return best_cost, best_path, best_vertex_path
@@ -309,19 +292,15 @@ def get_path_cost(
 ) -> float:
     cost = 0.0
     for index, bezier_curve in enumerate(bezier_path):
-        edge = graph.edges[
-            get_edge_name(vertex_path[index].name, vertex_path[index + 1].name)
-        ]
+        edge = graph.edges[get_edge_name(vertex_path[index].name, vertex_path[index + 1].name)]
         for i in range(len(bezier_curve) - 1):
             cost += edge.cost_function(bezier_curve[i], bezier_curve[i + 1])
         if index == len(bezier_path) - 1:
-            cost += vertex_path[-1].cost_at_point(
-                bezier_curve[-1], graph.value_function_solution
-            )
+            cost += vertex_path[-1].cost_at_point(bezier_curve[-1], graph.value_function_solution)
     return cost
 
 
-def rollout_the_policy(
+def lookahead_rollout_policy(
     gcs: PolynomialDualGCS,
     vertex: DualVertex,
     state: npt.NDArray,
@@ -367,9 +346,7 @@ def rollout_the_policy(
 
     # solve a convex restriction on the vertex sequence
     if options.postprocess_by_solving_restrction_on_mode_sequence:
-        _, full_path = solve_convex_restriction(
-            gcs, vertex_path_so_far, state, last_state, options
-        )
+        _, full_path = solve_convex_restriction(gcs, vertex_path_so_far, state, last_state, options)
         # verbose
         if options.verbose_restriction_improvement:
             cost_after = get_path_cost(gcs, vertex_path_so_far, full_path)
@@ -386,6 +363,132 @@ def rollout_the_policy(
     return full_path
 
 
+# def lookahead_rollout_with_backtracking_policy(
+#     gcs: PolynomialDualGCS,
+#     vertex: DualVertex,
+#     state: npt.NDArray,
+#     last_state: npt.NDArray = None,
+#     options: ProgramOptions = None,
+# ) -> T.List[T.List[npt.NDArray]]:
+#     """
+#     K-step lookahead rollout policy.
+#     If you reach a point from which no action is available --
+#     -- backtrack to the last state when some action was available.
+#     Returns a list of bezier curves. Each bezier curve is a list of control points (numpy arrays).
+#     """
+#     if options is None:
+#         options = gcs.options
+
+#     class Node:
+#         def __init__(self, vertex_now, state_now, state_last, bezier_path_so_far, vertex_path_so_far):
+#             self.vertex_now = vertex_now
+#             self.state_now = state_now
+#             self.state_last = state_last
+#             self.bezier_path_so_far = bezier_path_so_far
+#             self.vertex_path_so_far = vertex_path_so_far
+
+#     # cost, current state, last state, current vertex, state path so far, vertex path so far
+#     decision_options = [ PriorityQueue() ]
+#     decision_options[0].put( (0, Node(vertex, state, last_state, [], [vertex])) )
+
+
+#     decision_index = 0
+#     found_target = False
+
+#     while not found_target:
+#         if decision_index == -1:
+#             return None
+#         if decision_options[decision_index].empty():
+#             decision_index -= 1
+#         else:
+#             node = decision_options[decision_index].get()
+
+#             if options is None:
+#         options = gcs.options
+#         if options.policy_no_vertex_revisits:
+#             vertex_paths = get_all_n_step_paths_no_revisits(
+#                 gcs, options.policy_lookahead, vertex, already_visited
+#             )
+#         else:
+#             vertex_paths = get_all_n_step_paths(gcs, options.policy_lookahead, vertex)
+#         best_cost, best_path, best_vertex_path = np.inf, None, None
+#         for vertex_path in vertex_paths:
+#             cost, bezier_curves = solve_convex_restriction(
+#                 gcs, vertex_path, state, last_state, options
+#             )
+#             if options.policy_verbose_choices:
+#                 print([v.name for v in vertex_path], cost)
+#             if options.policy_min_cost:
+#                 if cost < best_cost:
+#                     best_cost, best_path, best_vertex_path = (
+#                         cost,
+#                         bezier_curves,
+#                         vertex_path,
+#                     )
+#             else:
+#                 if np.abs(cost - actual_cost) < np.abs(best_cost - actual_cost):
+#                     best_cost, best_path, best_vertex_path = (
+#                         cost,
+#                         bezier_curves,
+#                         vertex_path,
+#                     )
+#         if options.policy_verbose_choices:
+#             print("----")
+#         return best_cost, best_path, best_vertex_path
+
+
+#         # make a decision at current layer
+#         # if there are no decisions -- go back 1 layer
+#         # if there are decisions -- remove that decision from list of available decisions (pick best)
+#         # enumerate all possible next decisions, populate the list repsectively
+
+#     while not vertex_now.vertex_is_target:
+#         # use a k-step lookahead to obtain optimal k-step lookahead path
+#         _, bezier_path, vertex_path = get_k_step_optimal_path(
+#             gcs,
+#             vertex_now,
+#             state_now,
+#             state_last,
+#             options,
+#             already_visited=vertex_path_so_far,
+#         )
+#         if bezier_path is None:
+#             WARN("k-step optimal path couldn't find a solution")
+#             return None
+#         # take just the first action from that path, then repeat
+#         first_segment = bezier_path[0]
+#         full_path.append(first_segment)
+#         vertex_now, state_now, state_last = (
+#             vertex_path[1],
+#             first_segment[-1],
+#             first_segment[-2],
+#         )
+#         vertex_path_so_far.append(vertex_now)
+
+#     if options.verbose_restriction_improvement:
+#         cost_before = get_path_cost(gcs, vertex_path_so_far, full_path)
+
+#     # solve a convex restriction on the vertex sequence
+#     if options.postprocess_by_solving_restrction_on_mode_sequence:
+#         _, full_path = solve_convex_restriction(
+#             gcs, vertex_path_so_far, state, last_state, options
+#         )
+#         # verbose
+#         if options.verbose_restriction_improvement:
+#             cost_after = get_path_cost(gcs, vertex_path_so_far, full_path)
+#             INFO(
+#                 "path cost improved from",
+#                 np.round(cost_before, 1),
+#                 "to",
+#                 np.round(cost_after, 1),
+#                 "; original is",
+#                 np.round((cost_before / cost_after - 1) * 100, 1),
+#                 "% worse",
+#             )
+
+#     return full_path
+
+
 def plot_optimal_and_rollout(
     fig: go.Figure,
     gcs: PolynomialDualGCS,
@@ -399,7 +502,7 @@ def plot_optimal_and_rollout(
 ) -> bool:
     options = gcs.options
     options.policy_lookahead = lookahead
-    rollout_path = rollout_the_policy(gcs, vertex, state, last_state, options)
+    rollout_path = lookahead_rollout_policy(gcs, vertex, state, last_state, options)
     if rollout_path is None:
         return False
     plot_bezier(fig, rollout_path, rollout_color, rollout_color, name="rollout")
@@ -410,8 +513,6 @@ def plot_optimal_and_rollout(
 
     if plot_optimal:
         options.policy_lookahead = optimal_lookahead
-        _, optimal_path, _ = get_k_step_optimal_path(
-            gcs, vertex, state, last_state, options
-        )
+        _, optimal_path, _ = get_k_step_optimal_path(gcs, vertex, state, last_state, options)
         plot_bezier(fig, optimal_path, "blue", "blue", name="optimal")
     return True

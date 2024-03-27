@@ -205,12 +205,8 @@ def build_m_step_horizon_from_layers(
     for v in layers[last_index]:
         f_potential = lambda x: Expression(0)
         if not use_0_potentials:
-            potential = gcs.value_function_solution.GetSolution(
-                v.potential
-            ).ToExpression()
-            f_potential = lambda x: potential.Substitute(
-                {v.x[i]: x[i] for i in range(v.state_dim)}
-            )
+            potential = gcs.value_function_solution.GetSolution(v.potential).ToExpression()
+            f_potential = lambda x: potential.Substitute({v.x[i]: x[i] for i in range(v.state_dim)})
         new_v = new_gcs.AddTargetVertex(v.name, v.convex_set, f_potential)
         layer.append(new_v)
     new_layers.append(layer)
@@ -287,9 +283,7 @@ def get_next_action(
     new_gcs = build_m_step_horizon_from_layers(
         gcs, layers, m, vertex, layer_index, use_0_potentials=use_0_potentials
     )
-    _, vertex_name_path, value_path = new_gcs.solve_for_true_shortest_path(
-        vertex.name, point
-    )
+    _, vertex_name_path, value_path = new_gcs.solve_for_true_shortest_path(vertex.name, point)
     return gcs.vertices[vertex_name_path[1]], value_path[1]
 
 
@@ -302,9 +296,7 @@ def plot_policy_rollout(
     dx: float = 0.1,
     use_0_potentials: bool = False,
 ):
-    assert (
-        vertex.set_type == Hyperrectangle
-    ), "vertex not a Hyperrectangle, can't make a plot"
+    assert vertex.set_type == Hyperrectangle, "vertex not a Hyperrectangle, can't make a plot"
     assert len(vertex.convex_set.lb()) == 1, "only 1d cases for now"
     lb = vertex.convex_set.lb()[0]
     ub = vertex.convex_set.ub()[0]

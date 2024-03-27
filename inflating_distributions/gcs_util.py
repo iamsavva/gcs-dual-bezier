@@ -126,9 +126,7 @@ def get_solution_values(
 def solution_not_tight(gcs, solution):
     flow_variables = [e.phi() for e in gcs.Edges()]
     flow_results = [solution.GetSolution(p) for p in flow_variables]
-    not_tight = np.any(
-        np.logical_and(0.02 < np.array(flow_results), np.array(flow_results) < 0.98)
-    )
+    not_tight = np.any(np.logical_and(0.02 < np.array(flow_results), np.array(flow_results) < 0.98))
     not_tight_edges = np.sum(
         np.logical_and(0.02 < np.array(flow_results), np.array(flow_results) < 0.98)
     )

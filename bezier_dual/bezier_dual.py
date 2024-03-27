@@ -133,9 +133,7 @@ class DualVertex:
 
         self.total_flow_in_violation = prog.NewContinuousVariables(1)[0]
         prog.AddLinearConstraint(self.total_flow_in_violation >= 0)
-        prog.AddLinearCost(
-            self.total_flow_in_violation * self.options.max_flow_through_edge
-        )
+        prog.AddLinearCost(self.total_flow_in_violation * self.options.max_flow_through_edge)
 
     def define_set_inequalities(self):
         """
@@ -149,9 +147,7 @@ class DualVertex:
         A, b = hpoly.A(), hpoly.b()
         self.B = np.hstack((b.reshape((len(b), 1)), -A))
 
-    def define_potential(
-        self, prog: MathematicalProgram, specific_J_matrix: npt.NDArray = None
-    ):
+    def define_potential(self, prog: MathematicalProgram, specific_J_matrix: npt.NDArray = None):
         self.J_matrix, self.potential = define_quadratic_polynomial(
             prog, self.x, self.options.pot_type, specific_J_matrix
         )
@@ -177,9 +173,7 @@ class DualVertex:
         """
         assert len(x) == self.state_dim
         assert self.convex_set.PointInSet(x, 1e-5)  # evaluate only on set
-        return self.potential.EvaluatePartial(
-            {self.x[i]: x[i] for i in range(self.state_dim)}
-        )
+        return self.potential.EvaluatePartial({self.x[i]: x[i] for i in range(self.state_dim)})
 
     def cost_at_point(self, x: npt.NDArray, solution: MathematicalProgramResult = None):
 
@@ -191,9 +185,7 @@ class DualVertex:
             potential = solution.GetSolution(self.potential)
             return potential.Evaluate({self.x[i]: x[i] for i in range(self.state_dim)})
 
-    def cost_of_uniform_integral_over_box(
-        self, lb, ub, solution: MathematicalProgramResult = None
-    ):
+    def cost_of_uniform_integral_over_box(self, lb, ub, solution: MathematicalProgramResult = None):
         assert len(lb) == len(ub) == self.state_dim
 
         # compute by integrating each monomial term
@@ -220,9 +212,7 @@ class DualVertex:
         self, point: npt.NDArray, solution: MathematicalProgramResult = None, eps=0.001
     ):
         assert len(point) == self.state_dim
-        return self.cost_of_uniform_integral_over_box(
-            point - eps, point + eps, solution
-        )
+        return self.cost_of_uniform_integral_over_box(point - eps, point + eps, solution)
 
 
 class DualEdge:
@@ -277,9 +267,7 @@ class DualEdge:
 
         for k in range(self.options.num_control_points - 2):
             x = prog.NewIndeterminates(self.left.state_dim)
-            J_matrix, potential = define_quadratic_polynomial(
-                prog, x, self.options.pot_type
-            )
+            J_matrix, potential = define_quadratic_polynomial(prog, x, self.options.pot_type)
             self.x_vectors.append(x)
             self.J_matrices.append(J_matrix)
             self.potentials.append(potential)
@@ -299,9 +287,7 @@ class DualEdge:
 
         # expr = edge_cost + right_potential - left_potential - G_of_v+ self.bidirectional_edge_violation/(self.options.num_control_points-1)
         expr = edge_cost + right_potential - left_potential - G_of_v
-        define_sos_constraint_over_polyhedron(
-            prog, x_left, x_right, expr, B_left, B_right
-        )
+        define_sos_constraint_over_polyhedron(prog, x_left, x_right, expr, B_left, B_right)
 
         # -------------------------------------------------
         # J_{vw, k} to J_{vw,k+1}
@@ -314,9 +300,7 @@ class DualEdge:
 
             # expr = edge_cost + right_potential - left_potential+ self.bidirectional_edge_violation/(self.options.num_control_points-1)
             expr = edge_cost + right_potential - left_potential
-            define_sos_constraint_over_polyhedron(
-                prog, x_left, x_right, expr, B_left, B_right
-            )
+            define_sos_constraint_over_polyhedron(prog, x_left, x_right, expr, B_left, B_right)
 
         # -------------------------------------------------
         # J_{vw, n} to J_{w}
@@ -338,9 +322,7 @@ class DualEdge:
             + self.bidirectional_edge_violation
             + self.right.total_flow_in_violation
         )
-        define_sos_constraint_over_polyhedron(
-            prog, x_left, x_right, expr, B_left, B_right
-        )
+        define_sos_constraint_over_polyhedron(prog, x_left, x_right, expr, B_left, B_right)
 
 
 class PolynomialDualGCS:
@@ -385,9 +367,7 @@ class PolynomialDualGCS:
         cost = -vertex.cost_at_point(point)
         self.prog.AddLinearCost(cost * scaling)
 
-    def MaxCostAtSmallIntegralAroundPoint(
-        self, vertex: DualVertex, point, scaling=1, eps=0.001
-    ):
+    def MaxCostAtSmallIntegralAroundPoint(self, vertex: DualVertex, point, scaling=1, eps=0.001):
         cost = -vertex.cost_of_small_uniform_box_around_point(point, eps=eps)
         self.prog.AddLinearCost(cost * scaling)
 
@@ -418,9 +398,7 @@ class PolynomialDualGCS:
         J_21 = J_12.T
         J_22 = Q_terminal
 
-        specific_J_matrix = np.vstack(
-            (np.hstack((J_11, J_12)), np.hstack((J_21, J_22)))
-        )
+        specific_J_matrix = np.vstack((np.hstack((J_11, J_12)), np.hstack((J_21, J_22))))
 
         v = DualVertex(
             name,
@@ -450,15 +428,9 @@ class PolynomialDualGCS:
         self.prog.AddLinearConstraint(
             bidirectional_edge_violation >= 0
         )  # TODO: shouldn't be necessary?
-        self.prog.AddLinearCost(
-            bidirectional_edge_violation * self.options.max_flow_through_edge
-        )
-        self.AddEdge(
-            v_left, v_right, cost_function, options, bidirectional_edge_violation
-        )
-        self.AddEdge(
-            v_right, v_left, cost_function, options, bidirectional_edge_violation
-        )
+        self.prog.AddLinearCost(bidirectional_edge_violation * self.options.max_flow_through_edge)
+        self.AddEdge(v_left, v_right, cost_function, options, bidirectional_edge_violation)
+        self.AddEdge(v_right, v_left, cost_function, options, bidirectional_edge_violation)
 
     def AddEdge(
         self,
@@ -515,15 +487,11 @@ class PolynomialDualGCS:
         )
 
         if self.options.use_robust_mosek_parameters:
-            solver_options.SetOption(
-                MosekSolver.id(), "MSK_DPAR_INTPNT_CO_TOL_REL_GAP", 1e-3
-            )
+            solver_options.SetOption(MosekSolver.id(), "MSK_DPAR_INTPNT_CO_TOL_REL_GAP", 1e-3)
             solver_options.SetOption(MosekSolver.id(), "MSK_IPAR_INTPNT_SOLVE_FORM", 1)
 
         # solve the program
-        self.value_function_solution = mosek_solver.Solve(
-            self.prog, solver_options=solver_options
-        )
+        self.value_function_solution = mosek_solver.Solve(self.prog, solver_options=solver_options)
         timer.dt("Solve")
         diditwork(self.value_function_solution)
 
@@ -531,9 +499,7 @@ class PolynomialDualGCS:
 
     def get_policy_cost_for_region_plot(self, vertex_name: str):
         vertex = self.vertices[vertex_name]
-        assert (
-            vertex.set_type == Hyperrectangle
-        ), "vertex not a Hyperrectangle, can't make a plot"
+        assert vertex.set_type == Hyperrectangle, "vertex not a Hyperrectangle, can't make a plot"
         assert vertex.state_dim == 2, "can't plot generate plot for non-2d vertex"
 
         box = vertex.convex_set
@@ -545,9 +511,7 @@ class PolynomialDualGCS:
         X, Y = np.meshgrid(X, Y)
 
         def eval_func(x, y):
-            expression = vertex.cost_at_point(
-                np.array([x, y]), self.value_function_solution
-            )
+            expression = vertex.cost_at_point(np.array([x, y]), self.value_function_solution)
             return expression
 
         evaluator = np.vectorize(eval_func)
@@ -583,15 +547,11 @@ class PolynomialDualGCS:
     def make_1d_plot_potential(self, fig: go.Figure, v: DualVertex):
         assert type(v.convex_set) == Hyperrectangle
         assert len(v.convex_set.lb()) == 1
-        x_lin = np.linspace(
-            v.convex_set.lb()[0], v.convex_set.ub()[0], 100, endpoint=True
-        )
+        x_lin = np.linspace(v.convex_set.lb()[0], v.convex_set.ub()[0], 100, endpoint=True)
 
         def evaluate_0(y):
             potential = self.value_function_solution.GetSolution(v.potential)
-            f_potential = lambda x: potential.Substitute(
-                {v.x[i]: x[i] for i in range(v.state_dim)}
-            )
+            f_potential = lambda x: potential.Substitute({v.x[i]: x[i] for i in range(v.state_dim)})
             return f_potential(np.array([y])).Evaluate()
 
         offset = self.options.zero_offset + self.options.policy_gcs_edge_cost_offset

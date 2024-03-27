@@ -249,9 +249,7 @@ def rollout_m_step_policy(
                 gcs, layers, m, vertex, point, layer_index
             )
         else:
-            next_vertex, next_point = gcs.solve_m_step_policy(
-                layers, m, vertex, point, layer_index
-            )
+            next_vertex, next_point = gcs.solve_m_step_policy(layers, m, vertex, point, layer_index)
         cost, vertex_trajectory, trajectory = rollout_m_step_policy(
             gcs, layers, m, next_vertex, next_point, layer_index + 1
         )

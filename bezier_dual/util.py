@@ -131,10 +131,7 @@ class timeit:
         if descriptor is None:
             INFO("%.3fs since the start" % (self.times[-1] - self.times[0]))
         else:
-            INFO(
-                descriptor
-                + " took %.3fs since the start" % (self.times[-1] - self.times[0])
-            )
+            INFO(descriptor + " took %.3fs since the start" % (self.times[-1] - self.times[0]))
 
     def start(self):
         self.a_start = time.time()
@@ -166,9 +163,7 @@ def ChebyshevCenter(poly: HPolyhedron) -> T.Tuple[bool, npt.NDArray, float]:
     for i in range(m):
         a[0, 0] = np.linalg.norm(poly.A()[i, :])
         a[0, 1:] = poly.A()[i, :]
-        prog.AddLinearConstraint(
-            a, -np.array([big_num]), np.array([poly.b()[i]]), np.append(r, x)
-        )
+        prog.AddLinearConstraint(a, -np.array([big_num]), np.array([poly.b()[i]]), np.append(r, x))
 
     result = Solve(prog)
     if not result.is_success():
@@ -182,9 +177,7 @@ def offset_hpoly_inwards(hpoly: HPolyhedron, eps: float = 1e-5) -> HPolyhedron:
     return HPolyhedron(A, b - eps)
 
 
-def have_full_dimensional_intersection(
-    hpoly1: HPolyhedron, hpoly2: HPolyhedron
-) -> bool:
+def have_full_dimensional_intersection(hpoly1: HPolyhedron, hpoly2: HPolyhedron) -> bool:
     intersection = hpoly1.Intersection(hpoly2)
     inward_intersection = offset_hpoly_inwards(intersection)
     return not inward_intersection.IsEmpty()

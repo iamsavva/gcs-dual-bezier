@@ -126,9 +126,7 @@ class Vertex:
         else:
             # potential is a free polynomial
             if self.pot_type == FREE_POLY:
-                self.potential = prog.NewFreePolynomial(
-                    self.vars, self.potential_poly_deg
-                )
+                self.potential = prog.NewFreePolynomial(self.vars, self.potential_poly_deg)
             elif self.pot_type == PSD_POLY:
                 assert (
                     self.potential_poly_deg % 2 == 0
@@ -152,9 +150,7 @@ class Vertex:
         # needed when polynomial parameters are still optimizaiton variables
         assert len(x) == self.state_dim
         assert self.convex_set.PointInSet(x, 1e-5)  # evaluate only on set
-        return self.potential.EvaluatePartial(
-            {self.x[i]: x[i] for i in range(self.state_dim)}
-        )
+        return self.potential.EvaluatePartial({self.x[i]: x[i] for i in range(self.state_dim)})
 
     def cost_at_point(self, x: npt.NDArray, solution: MathematicalProgramResult = None):
         assert len(x) == self.state_dim
@@ -165,9 +161,7 @@ class Vertex:
             potential = solution.GetSolution(self.potential)
             return potential.Evaluate({self.x[i]: x[i] for i in range(self.state_dim)})
 
-    def cost_of_uniform_integral_over_box(
-        self, lb, ub, solution: MathematicalProgramResult = None
-    ):
+    def cost_of_uniform_integral_over_box(self, lb, ub, solution: MathematicalProgramResult = None):
         assert len(lb) == len(ub) == self.state_dim
 
         # compute by integrating each monomial term
@@ -194,9 +188,7 @@ class Vertex:
     ):
         assert len(point) == self.state_dim
         eps = 0.001
-        return self.cost_of_uniform_integral_over_box(
-            point - eps, point + eps, solution
-        )
+        return self.cost_of_uniform_integral_over_box(point - eps, point + eps, solution)
 
 
 class Edge:
@@ -315,9 +307,7 @@ class PolynomialDualGCS:
         self.prog.AddLinearCost(cost)
 
     def MaxCostAtSmallIntegralAroundPoint(self, vertex: Vertex, point):
-        cost = -vertex.cost_at_point(
-            vertex.cost_of_small_uniform_box_around_point(point)
-        )
+        cost = -vertex.cost_at_point(vertex.cost_of_small_uniform_box_around_point(point))
         self.prog.AddLinearCost(cost)
 
     def AddTargetVertex(
@@ -421,9 +411,7 @@ class PolynomialDualGCS:
         )
 
         # solve the program
-        self.value_function_solution = mosek_solver.Solve(
-            self.prog, solver_options=solver_options
-        )
+        self.value_function_solution = mosek_solver.Solve(self.prog, solver_options=solver_options)
         timer.dt("Solve")
         diditwork(self.value_function_solution)
 
@@ -448,9 +436,7 @@ class PolynomialDualGCS:
         if options is None:
             options = self.options
         assert vertex_name in self.vertices
-        assert self.vertices[vertex_name].convex_set.PointInSet(
-            point, 1e-5
-        )  # evaluate only on set
+        assert self.vertices[vertex_name].convex_set.PointInSet(point, 1e-5)  # evaluate only on set
 
         start_vertex = self.gcs.AddVertex(Point(point), "start")
         target_vertex = self.gcs_vertices["target"]
@@ -491,9 +477,7 @@ class PolynomialDualGCS:
 
     def get_true_cost_for_region_plot_2d(self, vertex_name: str, dx: float = 0.1):
         vertex = self.vertices[vertex_name]
-        assert (
-            vertex.set_type == Hyperrectangle
-        ), "vertex not a Hyperrectangle, can't make a plot"
+        assert vertex.set_type == Hyperrectangle, "vertex not a Hyperrectangle, can't make a plot"
         assert len(vertex.convex_set.lb()) == 1, "only 1d cases for now"
         lb = vertex.convex_set.lb()[0]
         ub = vertex.convex_set.ub()[0]
@@ -501,18 +485,14 @@ class PolynomialDualGCS:
         y = []
         mode_sequence = []
         for x_val in x:
-            cost, ms, _ = self.solve_for_true_shortest_path(
-                vertex_name, np.array([x_val])
-            )
+            cost, ms, _ = self.solve_for_true_shortest_path(vertex_name, np.array([x_val]))
             y.append(cost)
             mode_sequence.append(" ".join(ms))
         return x, np.array(y), np.array(mode_sequence)
 
     def get_policy_cost_for_region_plot(self, vertex_name: str, dx: float = 0.1):
         vertex = self.vertices[vertex_name]
-        assert (
-            vertex.set_type == Hyperrectangle
-        ), "vertex not a Hyperrectangle, can't make a plot"
+        assert vertex.set_type == Hyperrectangle, "vertex not a Hyperrectangle, can't make a plot"
         assert len(vertex.convex_set.lb()) == 1, "only 1d cases for now"
         lb = vertex.convex_set.lb()[0]
         ub = vertex.convex_set.ub()[0]
@@ -529,9 +509,7 @@ class PolynomialDualGCS:
 
         if subtract_nsteps is None:
             subtract_nsteps = 0
-        lower_bound_gap = (
-            1 - (y_policy - subtract_nsteps) / (y_true - subtract_nsteps)
-        ) * 100
+        lower_bound_gap = (1 - (y_policy - subtract_nsteps) / (y_true - subtract_nsteps)) * 100
 
         fig = go.Figure()
         fig.add_trace(
