@@ -50,6 +50,7 @@ class ProgramOptions:
         self.policy_verbose_choices = False
 
         self.postprocess_by_solving_restrction_on_mode_sequence = True
+        self.verbose_restriction_improvement = False
 
     def test_options(self):
         assert (

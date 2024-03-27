@@ -31,11 +31,11 @@ from pydrake.symbolic import (  # pylint: disable=import-error, no-name-in-modul
     Variables,
     Expression,
 )
-from pydrake.math import (
+from pydrake.math import (  # pylint: disable=import-error, no-name-in-module, unused-import
     ge,
     eq,
     le,
-)  # pylint: disable=import-error, no-name-in-module, unused-import
+)
 
 import plotly.graph_objects as go  # pylint: disable=import-error
 from plotly.express.colors import sample_colorscale  # pylint: disable=import-error
@@ -156,14 +156,14 @@ def get_all_n_step_vertices_and_edges(
 
 def solve_convex_restriction(
     graph: PolynomialDualGCS,
-    path: T.List[DualVertex],
+    vertex_path: T.List[DualVertex],
     state_now: npt.NDArray,
     state_last: npt.NDArray = None,
     options: ProgramOptions = None,
 ) -> T.Tuple[float, T.List[T.List[npt.NDArray]]]:
     """
     solve a convex restriction over a vertex path
-    return cost of the path
+    return cost of the vertex_path
     and return a list of bezier curves
     where bezier curve is a list of numpy arrays (vectors).
     """
@@ -171,7 +171,7 @@ def solve_convex_restriction(
         options = graph.options
     # need to construct an optimization problem
     prog = MathematicalProgram()
-    last_x = prog.NewContinuousVariables(path[0].state_dim)
+    last_x = prog.NewContinuousVariables(vertex_path[0].state_dim)
     prog.AddLinearConstraint(eq(last_x, state_now))
     last_delta = None
     if state_last is not None:
@@ -179,9 +179,9 @@ def solve_convex_restriction(
 
     bezier_curves = []
     # for every but the last vertex:
-    for i, vertex in enumerate(path):
+    for i, vertex in enumerate(vertex_path):
         # it's the last vertex -- don't add a bezier curve; add terminal cost
-        if i == len(path) - 1:
+        if i == len(vertex_path) - 1:
             potential = graph.value_function_solution.GetSolution(vertex.potential)
             f_potential = lambda x: potential.Substitute(
                 {vertex.x[i]: x[i] for i in range(vertex.state_dim)}
@@ -213,7 +213,7 @@ def solve_convex_restriction(
 
         else:
             bezier_curve = [last_x]
-            edge = graph.edges[get_edge_name(vertex.name, path[i + 1].name)]
+            edge = graph.edges[get_edge_name(vertex.name, vertex_path[i + 1].name)]
             for j in range(1, options.num_control_points):
                 # add a new knot point
                 x_j = prog.NewContinuousVariables(vertex.state_dim)
@@ -241,14 +241,16 @@ def solve_convex_restriction(
                 last_x = x_j
             bezier_curves.append(bezier_curve)
 
-            # if i == len(path)-2:
+            # if i == len(vertex_path)-2:
             #     prog.AddCost(graph.value_function_solution.GetSolution(edge.bidirectional_edge_violation))
 
     solution = Solve(prog)
     if solution.is_success():
-        return solution.get_optimal_cost(), [
+        optimization_cost = solution.get_optimal_cost()
+        bezier_solutions = [
             solution.GetSolution(bezier_curve) for bezier_curve in bezier_curves
         ]
+        return optimization_cost, bezier_solutions
     else:
         return np.inf, []
 
@@ -264,9 +266,7 @@ def get_k_step_optimal_path(
     options: ProgramOptions = None,
     already_visited: T.List[DualVertex] = [],
 ) -> T.Tuple[float, T.List[T.List[npt.NDArray]], T.List[DualVertex]]:
-    """
-
-    """
+    """ """
     actual_cost = vertex.cost_at_point(state, gcs.value_function_solution)
     if options is None:
         options = gcs.options
@@ -302,7 +302,23 @@ def get_k_step_optimal_path(
     return best_cost, best_path, best_vertex_path
 
 
-# def get_path_cost(vertex_path: T.List[DualVertex], bezier_path:T.List[T.List[npt.NDArray]]):
+def get_path_cost(
+    graph: PolynomialDualGCS,
+    vertex_path: T.List[DualVertex],
+    bezier_path: T.List[T.List[npt.NDArray]],
+) -> float:
+    cost = 0.0
+    for index, bezier_curve in enumerate(bezier_path):
+        edge = graph.edges[
+            get_edge_name(vertex_path[index].name, vertex_path[index + 1].name)
+        ]
+        for i in range(len(bezier_curve) - 1):
+            cost += edge.cost_function(bezier_curve[i], bezier_curve[i + 1])
+        if index == len(bezier_path) - 1:
+            cost += vertex_path[-1].cost_at_point(
+                bezier_curve[-1], graph.value_function_solution
+            )
+    return cost
 
 
 def rollout_the_policy(
@@ -320,8 +336,8 @@ def rollout_the_policy(
         options = gcs.options
     vertex_now, state_now, state_last = vertex, state, last_state
 
-    full_path = [] # type: T.List[T.List[npt.NDarray]]
-    vertex_path_so_far = [vertex_now] # type: T.List[DualVertex]
+    full_path = []  # type: T.List[T.List[npt.NDarray]]
+    vertex_path_so_far = [vertex_now]  # type: T.List[DualVertex]
 
     while not vertex_now.vertex_is_target:
         # use a k-step lookahead to obtain optimal k-step lookahead path
@@ -346,11 +362,26 @@ def rollout_the_policy(
         )
         vertex_path_so_far.append(vertex_now)
 
+    if options.verbose_restriction_improvement:
+        cost_before = get_path_cost(gcs, vertex_path_so_far, full_path)
+
     # solve a convex restriction on the vertex sequence
     if options.postprocess_by_solving_restrction_on_mode_sequence:
         _, full_path = solve_convex_restriction(
             gcs, vertex_path_so_far, state, last_state, options
         )
+        # verbose
+        if options.verbose_restriction_improvement:
+            cost_after = get_path_cost(gcs, vertex_path_so_far, full_path)
+            INFO(
+                "path cost improved from",
+                np.round(cost_before, 1),
+                "to",
+                np.round(cost_after, 1),
+                "; original is",
+                np.round((cost_before / cost_after - 1) * 100, 1),
+                "% worse",
+            )
 
     return full_path
 
