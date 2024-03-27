@@ -280,10 +280,6 @@ class DualEdge:
 
         # expr = edge_cost + right_potential - left_potential - G_of_v+ self.bidirectional_edge_violation/(self.options.num_control_points-1)
         expr = edge_cost + right_potential - left_potential - G_of_v
-        # print(edge_cost.Expand())
-        # print(right_potential.Expand())
-        # print(left_potential.Expand())
-        # print(G_of_v.Expand())
         define_sos_constraint_over_polyhedron(prog, x_left, x_right, expr, B_left, B_right)
 
         # -------------------------------------------------
@@ -357,11 +353,12 @@ class PolynomialDualGCS:
         cost = -vertex.cost_of_small_uniform_box_around_point(point, eps=eps)
         self.prog.AddLinearCost(cost*scaling)
 
-    def AddTargetVertex(
+    def AddTargetVertexWithQuadraticTerminalCost(
         self,
         name: str,
         convex_set: HPolyhedron,
-        specific_J_matrix: npt.NDArray,
+        Q_terminal:npt.NDArray,
+        x_terminal:npt.NDArray,
         options: ProgramOptions = None
     ):
         """
@@ -375,6 +372,17 @@ class PolynomialDualGCS:
         assert name not in self.vertices
         if options is None:
             options = self.options
+        
+        assert Q_terminal.shape == (len(x_terminal), len(x_terminal))
+        assert x_terminal.shape == (len(x_terminal),)
+        J_11 = np.array([[x_terminal.dot(Q_terminal).dot(x_terminal)]])
+        J_12 = - Q_terminal.dot(x_terminal).reshape((1, len(x_terminal)))
+        J_21 = J_12.T
+        J_22 = Q_terminal
+
+        specific_J_matrix = np.vstack( (np.hstack( (J_11, J_12) ), np.hstack( (J_21, J_22) ) ) )
+
+
         v = DualVertex(
             name,
             self.prog,

@@ -47,6 +47,10 @@ class ProgramOptions:
         self.policy_no_vertex_revisits = True
         self.policy_min_cost = True 
 
+        self.policy_add_total_flow_in_violation_penalty = False
+
+        self.policy_verbose_choices = False
+
 
 
     def test_options(self):

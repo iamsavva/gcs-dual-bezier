@@ -50,7 +50,6 @@ from util import (
     ChebyshevCenter,
 )  # pylint: disable=import-error, no-name-in-module, unused-import
 
-
 def define_quadratic_polynomial(
     prog: MathematicalProgram,
     x: npt.NDArray,

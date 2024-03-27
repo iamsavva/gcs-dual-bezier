@@ -171,6 +171,9 @@ def solve_convex_restriction(graph: PolynomialDualGCS, path: T.List[DualVertex],
                     return x_and_1.dot(G_matrix).dot(x_and_1)
                 prog.AddCost(eval_G(last_delta))
 
+            if options.policy_add_total_flow_in_violation_penalty:
+                prog.AddLinearCost(graph.value_function_solution.GetSolution(vertex.total_flow_in_violation))
+
 
         else:
             bezier_curve = [last_x]
@@ -200,8 +203,8 @@ def solve_convex_restriction(graph: PolynomialDualGCS, path: T.List[DualVertex],
                 last_x = x_j
             bezier_curves.append(bezier_curve)
 
-            if i == len(path)-2:
-                prog.AddCost(graph.value_function_solution.GetSolution(edge.bidirectional_edge_violation))
+            # if i == len(path)-2:
+            #     prog.AddCost(graph.value_function_solution.GetSolution(edge.bidirectional_edge_violation))
     
     solution = Solve(prog)
     if solution.is_success():
@@ -225,12 +228,16 @@ def get_k_step_optimal_path(gcs:PolynomialDualGCS, vertex:DualVertex, state:npt.
     best_cost, best_path, best_vertex_path = np.inf, None, None
     for vertex_path in vertex_paths:
         cost, bezier_curves = solve_convex_restriction(gcs, vertex_path, state, last_state, options)
+        if options.policy_verbose_choices:
+            print([v.name for v in vertex_path], cost)
         if options.policy_min_cost:
             if cost < best_cost:
                 best_cost, best_path, best_vertex_path = cost, bezier_curves, vertex_path
         else:
             if np.abs(cost-actual_cost) < np.abs(best_cost-actual_cost):
                 best_cost, best_path, best_vertex_path = cost, bezier_curves, vertex_path
+    if options.policy_verbose_choices:
+        print("----")
     return best_cost, best_path, best_vertex_path
 
 
