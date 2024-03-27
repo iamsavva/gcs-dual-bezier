@@ -47,8 +47,9 @@ from util import (
 from gcs_util import get_edge_name, make_quadratic_cost_function_matrices
 
 import logging
+
 logging.getLogger("drake").setLevel(logging.WARNING)
-np.set_printoptions(suppress=True) 
+np.set_printoptions(suppress=True)
 
 
 class Vertex:
@@ -135,7 +136,7 @@ class Vertex:
                 # potential is PSD polynomial
                 self.potential, _ = prog.NewSosPolynomial(
                     self.vars, self.potential_poly_deg
-                ) # i.e.: convex
+                )  # i.e.: convex
             else:
                 raise NotImplementedError("potential type not supported")
 
@@ -347,7 +348,6 @@ class PolynomialDualGCS:
         # building proper GCS
         self.vertices[name] = v
 
-
         # in the GCS graph, add a fake edge to the fake target vetex
         gcs_v = self.gcs.AddVertex(convex_set, name)
         self.gcs_vertices[name] = gcs_v
@@ -421,7 +421,9 @@ class PolynomialDualGCS:
         )
 
         # solve the program
-        self.value_function_solution = mosek_solver.Solve(self.prog, solver_options=solver_options)
+        self.value_function_solution = mosek_solver.Solve(
+            self.prog, solver_options=solver_options
+        )
         timer.dt("Solve")
         diditwork(self.value_function_solution)
 
@@ -484,48 +486,72 @@ class PolynomialDualGCS:
             value_path.append(result.GetSolution(e.v().x()))
 
         self.gcs.RemoveVertex(start_vertex)
-        
+
         return cost, vertex_name_path, value_path
-    
-    def get_true_cost_for_region_plot_2d(self, vertex_name:str, dx:float=0.1):
+
+    def get_true_cost_for_region_plot_2d(self, vertex_name: str, dx: float = 0.1):
         vertex = self.vertices[vertex_name]
-        assert vertex.set_type == Hyperrectangle, "vertex not a Hyperrectangle, can't make a plot"
+        assert (
+            vertex.set_type == Hyperrectangle
+        ), "vertex not a Hyperrectangle, can't make a plot"
         assert len(vertex.convex_set.lb()) == 1, "only 1d cases for now"
         lb = vertex.convex_set.lb()[0]
         ub = vertex.convex_set.ub()[0]
-        x = np.linspace(lb, ub, int((ub-lb)/dx), endpoint=True)
+        x = np.linspace(lb, ub, int((ub - lb) / dx), endpoint=True)
         y = []
         mode_sequence = []
         for x_val in x:
-            cost, ms, _ = self.solve_for_true_shortest_path(vertex_name, np.array([x_val]))
+            cost, ms, _ = self.solve_for_true_shortest_path(
+                vertex_name, np.array([x_val])
+            )
             y.append(cost)
-            mode_sequence.append( ' '.join(ms) )
+            mode_sequence.append(" ".join(ms))
         return x, np.array(y), np.array(mode_sequence)
 
-    def get_policy_cost_for_region_plot(self, vertex_name:str, dx:float=0.1):
+    def get_policy_cost_for_region_plot(self, vertex_name: str, dx: float = 0.1):
         vertex = self.vertices[vertex_name]
-        assert vertex.set_type == Hyperrectangle, "vertex not a Hyperrectangle, can't make a plot"
+        assert (
+            vertex.set_type == Hyperrectangle
+        ), "vertex not a Hyperrectangle, can't make a plot"
         assert len(vertex.convex_set.lb()) == 1, "only 1d cases for now"
         lb = vertex.convex_set.lb()[0]
         ub = vertex.convex_set.ub()[0]
-        x = np.linspace(lb, ub, int((ub-lb)/dx), endpoint=True)
+        x = np.linspace(lb, ub, int((ub - lb) / dx), endpoint=True)
         y = []
         for x_val in x:
             cost = vertex.cost_at_point(np.array([x_val]), self.value_function_solution)
             y.append(cost)
         return x, np.array(y)
-    
-    def make_plots(self, vertex_name, dx=0.5, subtract_nsteps:int=None):
+
+    def make_plots(self, vertex_name, dx=0.5, subtract_nsteps: int = None):
         x_true, y_true, ms_true = self.get_true_cost_for_region_plot_2d(vertex_name, dx)
         x_policy, y_policy = self.get_policy_cost_for_region_plot(vertex_name, dx)
 
         if subtract_nsteps is None:
             subtract_nsteps = 0
-        lower_bound_gap = (1 - (y_policy-subtract_nsteps)/(y_true-subtract_nsteps))*100
+        lower_bound_gap = (
+            1 - (y_policy - subtract_nsteps) / (y_true - subtract_nsteps)
+        ) * 100
 
         fig = go.Figure()
-        fig.add_trace(go.Scatter(x=x_true, y=y_true-subtract_nsteps, mode='lines', name="ground truth", line=dict(color="chartreuse") ))
-        fig.add_trace(go.Scatter(x=x_policy, y=y_policy-subtract_nsteps, mode='lines', name="policy", line=dict(color="blue") ))
+        fig.add_trace(
+            go.Scatter(
+                x=x_true,
+                y=y_true - subtract_nsteps,
+                mode="lines",
+                name="ground truth",
+                line=dict(color="chartreuse"),
+            )
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=x_policy,
+                y=y_policy - subtract_nsteps,
+                mode="lines",
+                name="policy",
+                line=dict(color="blue"),
+            )
+        )
 
         fig.update_layout(height=800, width=800, title_text="Value functions ")
         # fig.update_yaxes(title_text="Cost-to-go")
@@ -533,17 +559,15 @@ class PolynomialDualGCS:
         # fig.show()
 
         INFO("polynomial policy statistics")
-        INFO("max lower bound gap ", np.round(np.max(lower_bound_gap),2))
-        INFO("mean lower bound gap ", np.round(np.mean(lower_bound_gap),2))
+        INFO("max lower bound gap ", np.round(np.max(lower_bound_gap), 2))
+        INFO("mean lower bound gap ", np.round(np.mean(lower_bound_gap), 2))
         INFO("---------------------")
 
         return fig, y_true
-    
-
-
 
     # def get_k_step_lookahead_cost_for_region_plot(self, vertex_name:str, dx:float=0.1, convex_relaxation:bool=True):
-        
+
+
 def simple_test():
     options = ProgramOptions()
     options.use_convex_relaxation = False
@@ -564,7 +588,6 @@ def simple_test():
     graph.solve_for_true_shortest_path("1", "c1", [2])
     YAY("----")
     graph.solve_for_true_shortest_path("2", "c1", [2])
-
 
 
 if __name__ == "__main__":

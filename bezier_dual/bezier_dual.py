@@ -31,7 +31,11 @@ from pydrake.symbolic import (  # pylint: disable=import-error, no-name-in-modul
     Variables,
     Expression,
 )
-from pydrake.math import ge, eq,le # pylint: disable=import-error, no-name-in-module, unused-import
+from pydrake.math import (
+    ge,
+    eq,
+    le,
+)  # pylint: disable=import-error, no-name-in-module, unused-import
 
 import plotly.graph_objects as go  # pylint: disable=import-error
 from plotly.express.colors import sample_colorscale  # pylint: disable=import-error
@@ -51,11 +55,17 @@ from util import (
 )  # pylint: disable=import-error, no-name-in-module, unused-import
 
 from gcs_util import get_edge_name, make_quadratic_cost_function_matrices
-from polynomial_dual_gcs_utils import define_quadratic_polynomial, define_sos_constraint_over_polyhedron
+from polynomial_dual_gcs_utils import (
+    define_quadratic_polynomial,
+    define_sos_constraint_over_polyhedron,
+)
 
 delta = 0.01
-QUADRATIC_COST = lambda x,y: np.sum([(x[i]-y[i])**2 for i in range(len(x)) ])
-QUADRATIC_COST_AUGMENTED = lambda x,y: np.sum([(x[i]-y[i])**2 for i in range(len(x)) ]) + delta * ( np.sum([x[i]**2+y[i]**2 for i in range(len(x)) ]) )
+QUADRATIC_COST = lambda x, y: np.sum([(x[i] - y[i]) ** 2 for i in range(len(x))])
+QUADRATIC_COST_AUGMENTED = lambda x, y: np.sum(
+    [(x[i] - y[i]) ** 2 for i in range(len(x))]
+) + delta * (np.sum([x[i] ** 2 + y[i] ** 2 for i in range(len(x))]))
+
 
 class DualVertex:
     def __init__(
@@ -66,19 +76,19 @@ class DualVertex:
         options: ProgramOptions,
         specific_J_matrix: npt.NDArray = None,
         vertex_is_start: bool = False,
-        vertex_is_target: bool = False
+        vertex_is_target: bool = False,
     ):
         self.name = name
-        self.potential_poly_deg = 2 # type: int
+        self.potential_poly_deg = 2  # type: int
         self.options = options
         self.vertex_is_start = vertex_is_start
         self.vertex_is_target = vertex_is_target
         self.potential = Expression(0)
-        self.J_matrix = np.zeros((1,1))
+        self.J_matrix = np.zeros((1, 1))
 
         # TODO: handle ellipsoids exactly
         # TODO: handle points exactly
-        self.convex_set = convex_set  
+        self.convex_set = convex_set
         if isinstance(convex_set, HPolyhedron):
             self.set_type = HPolyhedron
             self.state_dim = convex_set.A().shape[1]
@@ -94,14 +104,14 @@ class DualVertex:
         self.define_set_inequalities()
         self.define_potential(prog, specific_J_matrix)
 
-        self.edges_in = [] # type: T.List[str]
-        self.edges_out = [] # type: T.List[str]
-        
+        self.edges_in = []  # type: T.List[str]
+        self.edges_out = []  # type: T.List[str]
+
         hpoly = self.get_hpoly()
         cheb_success, _, r = ChebyshevCenter(hpoly)
         assert cheb_success and (r > 1e-5), "vertex set is low dimensional"
-    
-    def get_hpoly(self)->HPolyhedron:
+
+    def get_hpoly(self) -> HPolyhedron:
         assert self.set_type in (HPolyhedron, Hyperrectangle), "can't get hpoly for set"
         if self.set_type == HPolyhedron:
             return self.convex_set
@@ -123,7 +133,9 @@ class DualVertex:
 
         self.total_flow_in_violation = prog.NewContinuousVariables(1)[0]
         prog.AddLinearConstraint(self.total_flow_in_violation >= 0)
-        prog.AddLinearCost(self.total_flow_in_violation * self.options.max_flow_through_edge)
+        prog.AddLinearCost(
+            self.total_flow_in_violation * self.options.max_flow_through_edge
+        )
 
     def define_set_inequalities(self):
         """
@@ -135,27 +147,28 @@ class DualVertex:
 
         # inequalities of the form b[i] - a.T x = g_i(x) >= 0
         A, b = hpoly.A(), hpoly.b()
-        self.B = np.hstack( (b.reshape((len(b),1)), -A) )
+        self.B = np.hstack((b.reshape((len(b), 1)), -A))
 
     def define_potential(
-        self,
-        prog: MathematicalProgram,
-        specific_J_matrix: npt.NDArray = None
+        self, prog: MathematicalProgram, specific_J_matrix: npt.NDArray = None
     ):
-        self.J_matrix, self.potential = define_quadratic_polynomial(prog, self.x, self.options.pot_type, specific_J_matrix)
-        
+        self.J_matrix, self.potential = define_quadratic_polynomial(
+            prog, self.x, self.options.pot_type, specific_J_matrix
+        )
+
         # define G -- the bezier curve continuity vector
         if self.vertex_is_target or self.vertex_is_start:
-            self.G_matrix = np.zeros((self.state_dim+1, self.state_dim+1))
+            self.G_matrix = np.zeros((self.state_dim + 1, self.state_dim + 1))
             self.eval_G = lambda x: Expression(0)
         else:
-            self.G_matrix = prog.NewSymmetricContinuousVariables( self.state_dim+1 )
+            self.G_matrix = prog.NewSymmetricContinuousVariables(self.state_dim + 1)
+
             def eval_G(x):
                 x_and_1 = np.hstack(([1], x))
                 return x_and_1.dot(self.G_matrix).dot(x_and_1)
+
             self.eval_G = eval_G
             # self.eval_G = lambda x: Expression(0)
-
 
     def evaluate_partial_potential_at_point(self, x: npt.NDArray):
         """
@@ -192,7 +205,10 @@ class DualVertex:
             for i in range(self.state_dim):
                 x_min, x_max, x_val = lb[i], ub[i], self.x[i]
                 integral_of_poly = poly.Integrate(x_val)
-                poly = (integral_of_poly.EvaluatePartial({x_val: x_max}) - integral_of_poly.EvaluatePartial({x_val: x_min})) / (x_max-x_min)
+                poly = (
+                    integral_of_poly.EvaluatePartial({x_val: x_max})
+                    - integral_of_poly.EvaluatePartial({x_val: x_min})
+                ) / (x_max - x_min)
             expectation += coef * poly.ToExpression()
 
         if solution is None:
@@ -204,7 +220,9 @@ class DualVertex:
         self, point: npt.NDArray, solution: MathematicalProgramResult = None, eps=0.001
     ):
         assert len(point) == self.state_dim
-        return self.cost_of_uniform_integral_over_box(point - eps, point + eps, solution)
+        return self.cost_of_uniform_integral_over_box(
+            point - eps, point + eps, solution
+        )
 
 
 class DualEdge:
@@ -216,7 +234,7 @@ class DualEdge:
         prog: MathematicalProgram,
         cost_function: T.Callable,
         options: ProgramOptions,
-        bidirectional_edge_violation = Expression(0)
+        bidirectional_edge_violation=Expression(0),
     ):
         self.name = name
         self.left = v_left
@@ -237,37 +255,38 @@ class DualEdge:
         intersection_hpoly = intersection_hpoly.ReduceInequalities()
 
         cheb_success, _, r = ChebyshevCenter(intersection_hpoly)
-        assert cheb_success and (r > 1e-5), "intersection of vertex sets connected by edge is low dimensional"
+        assert cheb_success and (
+            r > 1e-5
+        ), "intersection of vertex sets connected by edge is low dimensional"
         A, b = intersection_hpoly.A(), intersection_hpoly.b()
-        B = np.hstack( (b.reshape((len(b),1)), -A) )
+        B = np.hstack((b.reshape((len(b), 1)), -A))
         return B
-        
 
     def define_edge_polynomials_and_sos_constraints(self, prog: MathematicalProgram):
         """
         define edge appropriate SOS constraints
         """
 
-        self.x_vectors = [] 
+        self.x_vectors = []
         self.J_matrices = []
         self.potentials = []
-        
+
         # -----------------------------------------------
         # -----------------------------------------------
         # define n-2 intermediate potentials (at least 1 intermediary point in the set)
 
-        for k in range(self.options.num_control_points-2):
+        for k in range(self.options.num_control_points - 2):
             x = prog.NewIndeterminates(self.left.state_dim)
-            J_matrix, potential = define_quadratic_polynomial(prog, x, self.options.pot_type)
+            J_matrix, potential = define_quadratic_polynomial(
+                prog, x, self.options.pot_type
+            )
             self.x_vectors.append(x)
             self.J_matrices.append(J_matrix)
             self.potentials.append(potential)
 
-
         # -----------------------------------------------
         # -----------------------------------------------
         # make n+1 SOS constraints
-
 
         # -----------------------------------------------
         # J_{v} to J_{vw,1}
@@ -280,24 +299,28 @@ class DualEdge:
 
         # expr = edge_cost + right_potential - left_potential - G_of_v+ self.bidirectional_edge_violation/(self.options.num_control_points-1)
         expr = edge_cost + right_potential - left_potential - G_of_v
-        define_sos_constraint_over_polyhedron(prog, x_left, x_right, expr, B_left, B_right)
+        define_sos_constraint_over_polyhedron(
+            prog, x_left, x_right, expr, B_left, B_right
+        )
 
         # -------------------------------------------------
         # J_{vw, k} to J_{vw,k+1}
-        for k in range(self.options.num_control_points-3):
-            x_left, x_right = self.x_vectors[k], self.x_vectors[k+1]
+        for k in range(self.options.num_control_points - 3):
+            x_left, x_right = self.x_vectors[k], self.x_vectors[k + 1]
             B_left, B_right = self.left.B, self.left.B
             edge_cost = self.cost_function(x_left, x_right)
             left_potential = self.potentials[k]
-            right_potential = self.potentials[k+1]
+            right_potential = self.potentials[k + 1]
 
             # expr = edge_cost + right_potential - left_potential+ self.bidirectional_edge_violation/(self.options.num_control_points-1)
             expr = edge_cost + right_potential - left_potential
-            define_sos_constraint_over_polyhedron(prog, x_left, x_right, expr, B_left, B_right)
+            define_sos_constraint_over_polyhedron(
+                prog, x_left, x_right, expr, B_left, B_right
+            )
 
         # -------------------------------------------------
         # J_{vw, n} to J_{w}
-        n = self.options.num_control_points-3
+        n = self.options.num_control_points - 3
         x_left, x_right = self.x_vectors[n], self.right.x
         B_left, B_right = self.left.B, self.B_intersection
         edge_cost = self.cost_function(x_left, x_right)
@@ -307,19 +330,26 @@ class DualEdge:
 
         # NOTE: adding bidriectional edge violation just to the last constraint
         # expr = edge_cost + right_potential + G_of_v - left_potential + self.bidirectional_edge_violation/(self.options.num_control_points-1)
-        expr = edge_cost + right_potential + G_of_v - left_potential + self.bidirectional_edge_violation + self.right.total_flow_in_violation
-        define_sos_constraint_over_polyhedron(prog, x_left, x_right, expr, B_left, B_right)
-
-
+        expr = (
+            edge_cost
+            + right_potential
+            + G_of_v
+            - left_potential
+            + self.bidirectional_edge_violation
+            + self.right.total_flow_in_violation
+        )
+        define_sos_constraint_over_polyhedron(
+            prog, x_left, x_right, expr, B_left, B_right
+        )
 
 
 class PolynomialDualGCS:
-    def __init__(self, options:ProgramOptions) -> None:
+    def __init__(self, options: ProgramOptions) -> None:
         # variables creates for policy synthesis
         self.vertices = dict()  # type: T.Dict[str, DualVertex]
         self.edges = dict()  # type: T.Dict[str, DualEdge]
         self.prog = MathematicalProgram()  # type: MathematicalProgram
-        self.value_function_solution = None # type: MathematicalProgramResult
+        self.value_function_solution = None  # type: MathematicalProgramResult
 
         self.options = options
 
@@ -327,8 +357,8 @@ class PolynomialDualGCS:
         self,
         name: str,
         convex_set: ConvexSet,
-        options = None,
-        vertex_is_start:bool = False
+        options=None,
+        vertex_is_start: bool = False,
     ):
         """
         Options will default to graph initialized options if not specified
@@ -337,7 +367,13 @@ class PolynomialDualGCS:
         if options is None:
             options = self.options
         # add vertex to policy graph
-        v = DualVertex(name, self.prog, convex_set, options=options, vertex_is_start=vertex_is_start)
+        v = DualVertex(
+            name,
+            self.prog,
+            convex_set,
+            options=options,
+            vertex_is_start=vertex_is_start,
+        )
         self.vertices[name] = v
         return v
 
@@ -345,21 +381,23 @@ class PolynomialDualGCS:
         cost = -vertex.cost_of_uniform_integral_over_box(lb, ub)
         self.prog.AddLinearCost(cost)
 
-    def MaxCostAtAPoint(self, vertex: DualVertex, point, scaling = 1):
+    def MaxCostAtAPoint(self, vertex: DualVertex, point, scaling=1):
         cost = -vertex.cost_at_point(point)
-        self.prog.AddLinearCost(cost*scaling)
+        self.prog.AddLinearCost(cost * scaling)
 
-    def MaxCostAtSmallIntegralAroundPoint(self, vertex: DualVertex, point, scaling = 1, eps=0.001):
+    def MaxCostAtSmallIntegralAroundPoint(
+        self, vertex: DualVertex, point, scaling=1, eps=0.001
+    ):
         cost = -vertex.cost_of_small_uniform_box_around_point(point, eps=eps)
-        self.prog.AddLinearCost(cost*scaling)
+        self.prog.AddLinearCost(cost * scaling)
 
     def AddTargetVertexWithQuadraticTerminalCost(
         self,
         name: str,
         convex_set: HPolyhedron,
-        Q_terminal:npt.NDArray,
-        x_terminal:npt.NDArray,
-        options: ProgramOptions = None
+        Q_terminal: npt.NDArray,
+        x_terminal: npt.NDArray,
+        options: ProgramOptions = None,
     ):
         """
         Options will default to graph initialized options if not specified
@@ -372,29 +410,30 @@ class PolynomialDualGCS:
         assert name not in self.vertices
         if options is None:
             options = self.options
-        
+
         assert Q_terminal.shape == (len(x_terminal), len(x_terminal))
         assert x_terminal.shape == (len(x_terminal),)
         J_11 = np.array([[x_terminal.dot(Q_terminal).dot(x_terminal)]])
-        J_12 = - Q_terminal.dot(x_terminal).reshape((1, len(x_terminal)))
+        J_12 = -Q_terminal.dot(x_terminal).reshape((1, len(x_terminal)))
         J_21 = J_12.T
         J_22 = Q_terminal
 
-        specific_J_matrix = np.vstack( (np.hstack( (J_11, J_12) ), np.hstack( (J_21, J_22) ) ) )
-
+        specific_J_matrix = np.vstack(
+            (np.hstack((J_11, J_12)), np.hstack((J_21, J_22)))
+        )
 
         v = DualVertex(
             name,
             self.prog,
             convex_set,
-            options = options,
+            options=options,
             specific_J_matrix=specific_J_matrix,
-            vertex_is_target=True
+            vertex_is_target=True,
         )
         # building proper GCS
         self.vertices[name] = v
         return v
-    
+
     def AddBidirectionalEdge(
         self,
         v_left: DualVertex,
@@ -408,12 +447,18 @@ class PolynomialDualGCS:
         if options is None:
             options = self.options
         bidirectional_edge_violation = self.prog.NewContinuousVariables(1)[0]
-        self.prog.AddLinearConstraint(bidirectional_edge_violation >= 0) # TODO: shouldn't be necessary?
-        self.prog.AddLinearCost(bidirectional_edge_violation * self.options.max_flow_through_edge)
-        self.AddEdge(v_left, v_right, cost_function, options, bidirectional_edge_violation)
-        self.AddEdge(v_right, v_left, cost_function, options, bidirectional_edge_violation)
-
-        
+        self.prog.AddLinearConstraint(
+            bidirectional_edge_violation >= 0
+        )  # TODO: shouldn't be necessary?
+        self.prog.AddLinearCost(
+            bidirectional_edge_violation * self.options.max_flow_through_edge
+        )
+        self.AddEdge(
+            v_left, v_right, cost_function, options, bidirectional_edge_violation
+        )
+        self.AddEdge(
+            v_right, v_left, cost_function, options, bidirectional_edge_violation
+        )
 
     def AddEdge(
         self,
@@ -421,7 +466,7 @@ class PolynomialDualGCS:
         v_right: DualVertex,
         cost_function: T.Callable,
         options: ProgramOptions = None,
-        bidirectional_edge_violation = Expression(0),
+        bidirectional_edge_violation=Expression(0),
     ):
         """
         Options will default to graph initialized options if not specified
@@ -436,7 +481,7 @@ class PolynomialDualGCS:
             self.prog,
             cost_function,
             options=options,
-            bidirectional_edge_violation = bidirectional_edge_violation,
+            bidirectional_edge_violation=bidirectional_edge_violation,
         )
         self.edges[edge_name] = e
         v_left.add_edge_out(edge_name)
@@ -456,51 +501,58 @@ class PolynomialDualGCS:
         solver_options.SetOption(
             MosekSolver.id(),
             "MSK_DPAR_INTPNT_CO_TOL_REL_GAP",
-            self.options.MSK_DPAR_INTPNT_CO_TOL_REL_GAP
+            self.options.MSK_DPAR_INTPNT_CO_TOL_REL_GAP,
         )
         solver_options.SetOption(
             MosekSolver.id(),
             "MSK_DPAR_INTPNT_CO_TOL_PFEAS",
-            self.options.MSK_DPAR_INTPNT_CO_TOL_PFEAS
+            self.options.MSK_DPAR_INTPNT_CO_TOL_PFEAS,
         )
         solver_options.SetOption(
             MosekSolver.id(),
             "MSK_DPAR_INTPNT_CO_TOL_DFEAS",
-            self.options.MSK_DPAR_INTPNT_CO_TOL_DFEAS
+            self.options.MSK_DPAR_INTPNT_CO_TOL_DFEAS,
         )
 
         if self.options.use_robust_mosek_parameters:
-            solver_options.SetOption(MosekSolver.id(), "MSK_DPAR_INTPNT_CO_TOL_REL_GAP", 1e-3)
+            solver_options.SetOption(
+                MosekSolver.id(), "MSK_DPAR_INTPNT_CO_TOL_REL_GAP", 1e-3
+            )
             solver_options.SetOption(MosekSolver.id(), "MSK_IPAR_INTPNT_SOLVE_FORM", 1)
 
         # solve the program
-        self.value_function_solution = mosek_solver.Solve(self.prog, solver_options=solver_options)
+        self.value_function_solution = mosek_solver.Solve(
+            self.prog, solver_options=solver_options
+        )
         timer.dt("Solve")
         diditwork(self.value_function_solution)
 
         return self.value_function_solution
 
-    def get_policy_cost_for_region_plot(self, vertex_name:str):
+    def get_policy_cost_for_region_plot(self, vertex_name: str):
         vertex = self.vertices[vertex_name]
-        assert vertex.set_type == Hyperrectangle, "vertex not a Hyperrectangle, can't make a plot"
+        assert (
+            vertex.set_type == Hyperrectangle
+        ), "vertex not a Hyperrectangle, can't make a plot"
         assert vertex.state_dim == 2, "can't plot generate plot for non-2d vertex"
 
         box = vertex.convex_set
         eps = 0
-        N= 100
+        N = 100
 
-        X = np.linspace(box.lb()[0]-eps, box.ub()[0]+eps, N)
-        Y = np.linspace(box.lb()[1]-eps, box.ub()[1]+eps, N)
+        X = np.linspace(box.lb()[0] - eps, box.ub()[0] + eps, N)
+        Y = np.linspace(box.lb()[1] - eps, box.ub()[1] + eps, N)
         X, Y = np.meshgrid(X, Y)
 
-        def eval_func(x,y):
-            expression = vertex.cost_at_point( np.array([x,y]), self.value_function_solution )
+        def eval_func(x, y):
+            expression = vertex.cost_at_point(
+                np.array([x, y]), self.value_function_solution
+            )
             return expression
 
-        evaluator = np.vectorize( eval_func )
+        evaluator = np.vectorize(eval_func)
 
         return X, Y, evaluator(X, Y)
-    
 
     def make_plots(self, fig=None, cmax=30, offset=0):
         if fig is None:
@@ -509,30 +561,47 @@ class PolynomialDualGCS:
         for v_name in self.vertices.keys():
             X, Y, Z = self.get_policy_cost_for_region_plot(v_name)
             # Create filled 3D contours
-            fig.add_trace(go.Surface(x=X, y=Y, z=Z-offset, surfacecolor=Z-offset, name = v_name, cmin=0,cmax=cmax))
+            fig.add_trace(
+                go.Surface(
+                    x=X,
+                    y=Y,
+                    z=Z - offset,
+                    surfacecolor=Z - offset,
+                    name=v_name,
+                    cmin=0,
+                    cmax=cmax,
+                )
+            )
 
         # Update layout
-        fig.update_layout(scene=dict(
-                            xaxis_title='X',
-                            yaxis_title='Y',
-                            zaxis_title='Z'))
+        fig.update_layout(scene=dict(xaxis_title="X", yaxis_title="Y", zaxis_title="Z"))
 
         fig.update_layout(height=800, width=800, title_text="Value functions ")
 
         return fig
-    
 
-    def make_1d_plot_potential(self, fig:go.Figure, v: DualVertex):
+    def make_1d_plot_potential(self, fig: go.Figure, v: DualVertex):
         assert type(v.convex_set) == Hyperrectangle
         assert len(v.convex_set.lb()) == 1
-        x_lin = np.linspace(v.convex_set.lb()[0], v.convex_set.ub()[0], 100, endpoint=True)
+        x_lin = np.linspace(
+            v.convex_set.lb()[0], v.convex_set.ub()[0], 100, endpoint=True
+        )
 
-    
         def evaluate_0(y):
             potential = self.value_function_solution.GetSolution(v.potential)
-            f_potential = lambda x: potential.Substitute({v.x[i]: x[i] for i in range(v.state_dim)})
+            f_potential = lambda x: potential.Substitute(
+                {v.x[i]: x[i] for i in range(v.state_dim)}
+            )
             return f_potential(np.array([y])).Evaluate()
 
         offset = self.options.zero_offset + self.options.policy_gcs_edge_cost_offset
         # fig.update_layout(title=r"$\text{Cost-to-go comparison over set }\;X_w$")
-        fig.add_trace(go.Scatter(x=x_lin, y=np.vectorize(evaluate_0)(x_lin)-offset, mode='lines', name=r"$J_v(x)$", line=dict(color="blue") ))
+        fig.add_trace(
+            go.Scatter(
+                x=x_lin,
+                y=np.vectorize(evaluate_0)(x_lin) - offset,
+                mode="lines",
+                name=r"$J_v(x)$",
+                line=dict(color="blue"),
+            )
+        )

@@ -148,7 +148,7 @@ class timeit:
 
 
 def ChebyshevCenter(poly: HPolyhedron) -> T.Tuple[bool, npt.NDArray, float]:
-    
+
     # Ax <= b
     m = poly.A().shape[0]
     n = poly.A().shape[1]

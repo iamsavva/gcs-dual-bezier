@@ -31,7 +31,11 @@ from pydrake.symbolic import (  # pylint: disable=import-error, no-name-in-modul
     Variables,
     Expression,
 )
-from pydrake.math import ge, eq,le # pylint: disable=import-error, no-name-in-module, unused-import
+from pydrake.math import (
+    ge,
+    eq,
+    le,
+)  # pylint: disable=import-error, no-name-in-module, unused-import
 
 import plotly.graph_objects as go  # pylint: disable=import-error
 from plotly.express.colors import sample_colorscale  # pylint: disable=import-error
@@ -50,7 +54,8 @@ from util import (
 )  # pylint: disable=import-error, no-name-in-module, unused-import
 from gcs_util import get_edge_name, make_quadratic_cost_function_matrices
 
-QUADRATIC_COST = lambda x,y: np.sum([(x[i]-y[i])**2 for i in range(len(x)) ])
+QUADRATIC_COST = lambda x, y: np.sum([(x[i] - y[i]) ** 2 for i in range(len(x))])
+
 
 class DualVertex:
     def __init__(
@@ -60,7 +65,7 @@ class DualVertex:
         convex_set: ConvexSet,
         options: ProgramOptions,
         specific_potential: T.Callable = None,
-        specific_J: npt.NDArray = None
+        specific_J: npt.NDArray = None,
     ):
         self.name = name
         self.potential_poly_deg = 2
@@ -107,35 +112,35 @@ class DualVertex:
 
         # inequalities of the form b[i] - a.T x = g_i(x) >= 0
         A, b = hpoly.A(), hpoly.b()
-        self.B = np.hstack( (b.reshape((len(b),1)), -A) )
+        self.B = np.hstack((b.reshape((len(b), 1)), -A))
 
     def define_potential(
         self,
         prog: MathematicalProgram,
         specific_potential: T.Callable = None,
-        specific_J: npt.NDArray = None
+        specific_J: npt.NDArray = None,
     ):
         # specific potential here is a function
         if specific_potential is not None:
             self.potential = specific_potential(self.x)
-            assert specific_J.shape == (self.state_dim+1,self.state_dim+1)
+            assert specific_J.shape == (self.state_dim + 1, self.state_dim + 1)
             self.J = specific_J
         else:
             # potential is a free polynomial
-            x_and_1 = np.hstack(([1],self.x))
+            x_and_1 = np.hstack(([1], self.x))
             if self.options.pot_type == FREE_POLY:
-                self.potential = prog.NewFreePolynomial( self.vars, 2)
-                self.J = prog.NewSymmetricContinuousVariables( self.state_dim+1 )
-                self.potential = x_and_1.dot(self.J).dot(x_and_1) 
+                self.potential = prog.NewFreePolynomial(self.vars, 2)
+                self.J = prog.NewSymmetricContinuousVariables(self.state_dim + 1)
+                self.potential = x_and_1.dot(self.J).dot(x_and_1)
             elif self.options.pot_type in (PSD_POLY, CONVEX_POLY):
                 # potential is PSD polynomial
-                self.J = prog.NewSymmetricContinuousVariables( self.state_dim+1 )
+                self.J = prog.NewSymmetricContinuousVariables(self.state_dim + 1)
                 # i don't actually care about the whole thing being PSD; only about the x component being convex
                 if self.options.pot_type == CONVEX_POLY:
-                    prog.AddPositiveSemidefiniteConstraint( self.J[1:,1:] )
+                    prog.AddPositiveSemidefiniteConstraint(self.J[1:, 1:])
                 elif self.options.pot_type == PSD_POLY:
-                    prog.AddPositiveSemidefiniteConstraint( self.J)
-                self.potential = x_and_1.dot(self.J).dot(x_and_1) 
+                    prog.AddPositiveSemidefiniteConstraint(self.J)
+                self.potential = x_and_1.dot(self.J).dot(x_and_1)
                 # NOTE: Russ uses different notation for PSD matrix
                 # NOTE: i am 1 x^T; x X. Russ is X x; x^T 1
                 # self.potential, self.J = prog.NewSosPolynomial( self.vars, 2 ) # i.e.: convex
@@ -201,7 +206,7 @@ class DualEdge:
         prog: MathematicalProgram,
         cost_function: T.Callable,
         options: ProgramOptions,
-        force_deterministic:bool = False
+        force_deterministic: bool = False,
     ):
         self.name = name
         self.left = v_left
@@ -211,8 +216,10 @@ class DualEdge:
         self.cost_function = cost_function
 
         self.options = options
-        self.noise_mat = np.eye(1+self.left.state_dim) * self.options.noise_magnitude**2
-        self.noise_mat[0,0] = 0
+        self.noise_mat = (
+            np.eye(1 + self.left.state_dim) * self.options.noise_magnitude**2
+        )
+        self.noise_mat[0, 0] = 0
         self.force_deterministic = force_deterministic
 
         self.define_sos_constaint(prog)
@@ -231,7 +238,6 @@ class DualEdge:
         right_potential = self.right.potential
         left_potential = self.left.potential
 
-
         # -------------------------------------------------
         # set membership through the S procedure
 
@@ -245,7 +251,7 @@ class DualEdge:
         Bl = self.left.B
         Br = self.right.B
 
-        # deg 0 
+        # deg 0
         lambda_0 = prog.NewContinuousVariables(1)[0]
         prog.AddLinearConstraint(lambda_0 >= 0)
         s_procedure += lambda_0
@@ -255,15 +261,19 @@ class DualEdge:
         deg_1_cons_r = Br.dot(y_and_1)
         lambda_1_left = prog.NewContinuousVariables(len(deg_1_cons_l))
         lambda_1_right = prog.NewContinuousVariables(len(deg_1_cons_r))
-        
+
         prog.AddLinearConstraint(ge(lambda_1_left, 0))
         prog.AddLinearConstraint(ge(lambda_1_right, 0))
-        s_procedure += deg_1_cons_l.dot(lambda_1_left) + deg_1_cons_r.dot(lambda_1_right)
+        s_procedure += deg_1_cons_l.dot(lambda_1_left) + deg_1_cons_r.dot(
+            lambda_1_right
+        )
 
         # deg 2
         lambda_2_left = prog.NewSymmetricContinuousVariables(len(deg_1_cons_l))
         lambda_2_right = prog.NewSymmetricContinuousVariables(len(deg_1_cons_r))
-        lambda_2_left_right = prog.NewContinuousVariables(len(deg_1_cons_r), len(deg_1_cons_r) )
+        lambda_2_left_right = prog.NewContinuousVariables(
+            len(deg_1_cons_r), len(deg_1_cons_r)
+        )
 
         prog.AddLinearConstraint(ge(lambda_2_left, 0))
         prog.AddLinearConstraint(ge(lambda_2_right, 0))
@@ -276,40 +286,51 @@ class DualEdge:
         self.lambda_2_right = lambda_2_right
         self.lambda_2_left_right = lambda_2_left_right
 
-        s_procedure += np.sum( ( Bl.dot( np.outer(x_and_1, x_and_1) ).dot(Bl.T)) * lambda_2_left )
+        s_procedure += np.sum(
+            (Bl.dot(np.outer(x_and_1, x_and_1)).dot(Bl.T)) * lambda_2_left
+        )
 
-        s_procedure += np.sum( ( Br.dot( np.outer(y_and_1, y_and_1) ).dot(Br.T) ) * lambda_2_right )
+        s_procedure += np.sum(
+            (Br.dot(np.outer(y_and_1, y_and_1)).dot(Br.T)) * lambda_2_right
+        )
 
-        s_procedure += np.sum( ( Bl.dot( np.outer(x_and_1, y_and_1) ).dot(Br.T) ) * lambda_2_left_right )
-
+        s_procedure += np.sum(
+            (Bl.dot(np.outer(x_and_1, y_and_1)).dot(Br.T)) * lambda_2_left_right
+        )
 
         # ---------------------------------------------------
         # extra terms related to different versions
-        assert np.sum([self.options.solve_ot, 
-                       self.options.solve_ot_stochastic_transitions, 
-                       self.options.solve_ot_relaxed_stochastic_transitions,
-                       self.options.solve_ot_deterministic_transitions_inflated,
-                       self.options.solve_robustified_set_membership
-                       ]) == 1, "more than 1 solve option set"
+        assert (
+            np.sum(
+                [
+                    self.options.solve_ot,
+                    self.options.solve_ot_stochastic_transitions,
+                    self.options.solve_ot_relaxed_stochastic_transitions,
+                    self.options.solve_ot_deterministic_transitions_inflated,
+                    self.options.solve_robustified_set_membership,
+                ]
+            )
+            == 1
+        ), "more than 1 solve option set"
 
         noise_terms = Expression(0)
         if self.options.solve_ot or self.force_deterministic:
             pass
 
-        elif self.options.solve_robustified_set_membership: # 
+        elif self.options.solve_robustified_set_membership:  #
             if self.left.name != "s":
-                noise_terms -= np.sum( Bl.dot(self.noise_mat).dot(Bl.T) * lambda_2_left )
-            noise_terms -= np.sum( Br.dot(self.noise_mat).dot(Br.T) * lambda_2_right )
+                noise_terms -= np.sum(Bl.dot(self.noise_mat).dot(Bl.T) * lambda_2_left)
+            noise_terms -= np.sum(Br.dot(self.noise_mat).dot(Br.T) * lambda_2_right)
 
-        elif self.options.solve_ot_stochastic_transitions: # 
-            noise_terms += np.sum(self.noise_mat * self.right.J) 
-            noise_terms -= np.sum( Br.dot(self.noise_mat).dot(Br.T) * lambda_2_right )
+        elif self.options.solve_ot_stochastic_transitions:  #
+            noise_terms += np.sum(self.noise_mat * self.right.J)
+            noise_terms -= np.sum(Br.dot(self.noise_mat).dot(Br.T) * lambda_2_right)
 
         elif self.options.solve_ot_relaxed_stochastic_transitions:
             self.delta = prog.NewContinuousVariables(1)[0]
             noise_terms -= self.delta
             con_expr = Expression(0)
-            con_expr += np.sum( (Br.dot(self.noise_mat).dot(Br.T)) * lambda_2_right )
+            con_expr += np.sum((Br.dot(self.noise_mat).dot(Br.T)) * lambda_2_right)
             con_expr -= np.sum(self.noise_mat * self.right.J)
             con_expr += self.options.gamma - self.delta
             prog.AddLinearConstraint(con_expr <= 0)
@@ -318,7 +339,7 @@ class DualEdge:
             self.delta = prog.NewContinuousVariables(1)[0]
             noise_terms -= self.delta
             con_expr = Expression(0)
-            con_expr += np.sum( (Br.dot(self.noise_mat).dot(Br.T)) * lambda_2_right )
+            con_expr += np.sum((Br.dot(self.noise_mat).dot(Br.T)) * lambda_2_right)
             con_expr += self.options.gamma - self.delta
             prog.AddLinearConstraint(con_expr <= 0)
         else:
@@ -327,12 +348,12 @@ class DualEdge:
         # -------------------------------------------------
         # form the entire expression
         expr = edge_cost + right_potential - left_potential - s_procedure + noise_terms
-        # TODO: i should plot this expression ^ 
+        # TODO: i should plot this expression ^
         prog.AddSosConstraint(expr)
 
 
 class PolynomialDualGCS:
-    def __init__(self, options:ProgramOptions) -> None:
+    def __init__(self, options: ProgramOptions) -> None:
         # variables creates for policy synthesis
         self.vertices = dict()  # type: T.Dict[str, DualVertex]
         self.edges = dict()  # type: T.Dict[str, DualEdge]
@@ -341,12 +362,7 @@ class PolynomialDualGCS:
 
         self.options = options
 
-    def AddVertex(
-        self,
-        name: str,
-        convex_set: HPolyhedron,
-        options = None
-    ):
+    def AddVertex(self, name: str, convex_set: HPolyhedron, options=None):
         """
         Options will default to graph initialized options if not specified
         """
@@ -362,13 +378,15 @@ class PolynomialDualGCS:
         cost = -vertex.cost_of_uniform_integral_over_box(lb, ub)
         self.prog.AddLinearCost(cost)
 
-    def MaxCostAtAPoint(self, vertex: DualVertex, point, scaling = 1):
+    def MaxCostAtAPoint(self, vertex: DualVertex, point, scaling=1):
         cost = -vertex.cost_at_point(point)
-        self.prog.AddLinearCost(cost*scaling)
+        self.prog.AddLinearCost(cost * scaling)
 
-    def MaxCostAtSmallIntegralAroundPoint(self, vertex: DualVertex, point, scaling = 1, eps=0.001):
+    def MaxCostAtSmallIntegralAroundPoint(
+        self, vertex: DualVertex, point, scaling=1, eps=0.001
+    ):
         cost = -vertex.cost_of_small_uniform_box_around_point(point, eps=eps)
-        self.prog.AddLinearCost(cost*scaling)
+        self.prog.AddLinearCost(cost * scaling)
 
     def AddTargetVertex(
         self,
@@ -376,7 +394,7 @@ class PolynomialDualGCS:
         convex_set: HPolyhedron,
         specific_potential: T.Callable,
         specific_J: npt.NDArray,
-        options: ProgramOptions = None
+        options: ProgramOptions = None,
     ):
         """
         Options will default to graph initialized options if not specified
@@ -393,9 +411,9 @@ class PolynomialDualGCS:
             name,
             self.prog,
             convex_set,
-            options = options,
+            options=options,
             specific_potential=specific_potential,
-            specific_J=specific_J
+            specific_J=specific_J,
         )
         # building proper GCS
         self.vertices[name] = v
@@ -407,7 +425,7 @@ class PolynomialDualGCS:
         v_right: DualVertex,
         cost_function: T.Callable,
         options: ProgramOptions = None,
-        force_deterministic: bool = False
+        force_deterministic: bool = False,
     ):
         """
         Options will default to graph initialized options if not specified
@@ -422,7 +440,7 @@ class PolynomialDualGCS:
             self.prog,
             cost_function,
             options=options,
-            force_deterministic = force_deterministic
+            force_deterministic=force_deterministic,
         )
         self.edges[edge_name] = e
         v_left.add_edge_out(edge_name)
@@ -442,47 +460,52 @@ class PolynomialDualGCS:
         solver_options.SetOption(
             MosekSolver.id(),
             "MSK_DPAR_INTPNT_CO_TOL_REL_GAP",
-            self.options.MSK_DPAR_INTPNT_CO_TOL_REL_GAP
+            self.options.MSK_DPAR_INTPNT_CO_TOL_REL_GAP,
         )
         solver_options.SetOption(
             MosekSolver.id(),
             "MSK_DPAR_INTPNT_CO_TOL_PFEAS",
-            self.options.MSK_DPAR_INTPNT_CO_TOL_PFEAS
+            self.options.MSK_DPAR_INTPNT_CO_TOL_PFEAS,
         )
         solver_options.SetOption(
             MosekSolver.id(),
             "MSK_DPAR_INTPNT_CO_TOL_DFEAS",
-            self.options.MSK_DPAR_INTPNT_CO_TOL_DFEAS
+            self.options.MSK_DPAR_INTPNT_CO_TOL_DFEAS,
         )
 
         # solve the program
-        self.value_function_solution = mosek_solver.Solve(self.prog, solver_options=solver_options)
+        self.value_function_solution = mosek_solver.Solve(
+            self.prog, solver_options=solver_options
+        )
         timer.dt("Solve")
         diditwork(self.value_function_solution)
 
         return self.value_function_solution
 
-    def get_policy_cost_for_region_plot(self, vertex_name:str):
+    def get_policy_cost_for_region_plot(self, vertex_name: str):
         vertex = self.vertices[vertex_name]
-        assert vertex.set_type == Hyperrectangle, "vertex not a Hyperrectangle, can't make a plot"
+        assert (
+            vertex.set_type == Hyperrectangle
+        ), "vertex not a Hyperrectangle, can't make a plot"
 
         box = vertex.convex_set
         eps = 0
-        N= 100
+        N = 100
 
-        X = np.linspace(box.lb()[0]-eps, box.ub()[0]+eps, N)
-        Y = np.linspace(box.lb()[1]-eps, box.ub()[1]+eps, N)
+        X = np.linspace(box.lb()[0] - eps, box.ub()[0] + eps, N)
+        Y = np.linspace(box.lb()[1] - eps, box.ub()[1] + eps, N)
         X, Y = np.meshgrid(X, Y)
 
         # eval_func = lambda x,y: vertex.cost_at_point( np.array([x,y]), self.value_function_solution )
-        def eval_func(x,y):
-            expression = vertex.cost_at_point( np.array([x,y]), self.value_function_solution )
+        def eval_func(x, y):
+            expression = vertex.cost_at_point(
+                np.array([x, y]), self.value_function_solution
+            )
             return expression
 
-        evaluator = np.vectorize( eval_func )
+        evaluator = np.vectorize(eval_func)
 
         return X, Y, evaluator(X, Y)
-    
 
     def make_plots(self, fig=None, cmax=30, offset=0):
         if fig is None:
@@ -491,67 +514,139 @@ class PolynomialDualGCS:
         for v_name in self.vertices.keys():
             X, Y, Z = self.get_policy_cost_for_region_plot(v_name)
             # Create filled 3D contours
-            fig.add_trace(go.Surface(x=X, y=Y, z=Z-offset, surfacecolor=Z-offset, name = v_name, cmin=0,cmax=cmax))
+            fig.add_trace(
+                go.Surface(
+                    x=X,
+                    y=Y,
+                    z=Z - offset,
+                    surfacecolor=Z - offset,
+                    name=v_name,
+                    cmin=0,
+                    cmax=cmax,
+                )
+            )
 
         # Update layout
-        fig.update_layout(scene=dict(
-                            xaxis_title='X',
-                            yaxis_title='Y',
-                            zaxis_title='Z'))
+        fig.update_layout(scene=dict(xaxis_title="X", yaxis_title="Y", zaxis_title="Z"))
 
         fig.update_layout(height=800, width=800, title_text="Value functions ")
 
         return fig
-    
 
-    def make_1d_plot_potential(self, fig:go.Figure, v: DualVertex):
+    def make_1d_plot_potential(self, fig: go.Figure, v: DualVertex):
         assert type(v.convex_set) == Hyperrectangle
         assert len(v.convex_set.lb()) == 1
-        x_lin = np.linspace(v.convex_set.lb()[0], v.convex_set.ub()[0], 100, endpoint=True)
+        x_lin = np.linspace(
+            v.convex_set.lb()[0], v.convex_set.ub()[0], 100, endpoint=True
+        )
 
-    
         def evaluate_0(y):
             potential = self.value_function_solution.GetSolution(v.potential)
-            f_potential = lambda x: potential.Substitute({v.x[i]: x[i] for i in range(v.state_dim)})
+            f_potential = lambda x: potential.Substitute(
+                {v.x[i]: x[i] for i in range(v.state_dim)}
+            )
             return f_potential(np.array([y])).Evaluate()
 
         offset = self.options.zero_offset + self.options.policy_gcs_edge_cost_offset
         # fig.update_layout(title=r"$\text{Cost-to-go comparison over set }\;X_w$")
-        fig.add_trace(go.Scatter(x=x_lin, y=np.vectorize(evaluate_0)(x_lin)-offset, mode='lines', name=r"$J_v(x)$", line=dict(color="blue") ))
+        fig.add_trace(
+            go.Scatter(
+                x=x_lin,
+                y=np.vectorize(evaluate_0)(x_lin) - offset,
+                mode="lines",
+                name=r"$J_v(x)$",
+                line=dict(color="blue"),
+            )
+        )
 
-
-
-    def make_1d_plot_edge_1_step(self, fig:go.Figure, edge: DualEdge, x_point:npt.NDArray, plot_just_1=False, force_dont_add_noise=False):
+    def make_1d_plot_edge_1_step(
+        self,
+        fig: go.Figure,
+        edge: DualEdge,
+        x_point: npt.NDArray,
+        plot_just_1=False,
+        force_dont_add_noise=False,
+    ):
         v = edge.right
         assert type(v.convex_set) == Hyperrectangle
         assert len(v.convex_set.lb()) == 1
-        x_lin = np.linspace(v.convex_set.lb()[0], v.convex_set.ub()[0], 100, endpoint=True)
+        x_lin = np.linspace(
+            v.convex_set.lb()[0], v.convex_set.ub()[0], 100, endpoint=True
+        )
 
-    
         def evaluate_0(y):
-            func = self.get_policy_edge_cost(edge, add_potential=True, force_dont_add_s_proecdure=True,force_dont_add_noise=force_dont_add_noise)
+            func = self.get_policy_edge_cost(
+                edge,
+                add_potential=True,
+                force_dont_add_s_proecdure=True,
+                force_dont_add_noise=force_dont_add_noise,
+            )
             return func(x_point, np.array([y])).Evaluate()
-        
+
         def evaluate_1(y):
-            func = self.get_policy_edge_cost(edge, add_potential=True, force_dont_add_s_proecdure=False, force_dont_add_noise=force_dont_add_noise)
+            func = self.get_policy_edge_cost(
+                edge,
+                add_potential=True,
+                force_dont_add_s_proecdure=False,
+                force_dont_add_noise=force_dont_add_noise,
+            )
             return func(x_point, np.array([y])).Evaluate()
-        
+
         def plot_min(x, y, fig, color, name):
             # Find the index of the minimum y value
             min_y_index = np.argmin(y)
             # Get the corresponding x value
             min_x_value = x[min_y_index]
             min_y_value = y[min_y_index]
-            fig.add_trace(go.Scatter(x=[min_x_value], y=[min_y_value], mode='markers', line=dict(color=color), showlegend=False, name = name))
+            fig.add_trace(
+                go.Scatter(
+                    x=[min_x_value],
+                    y=[min_y_value],
+                    mode="markers",
+                    line=dict(color=color),
+                    showlegend=False,
+                    name=name,
+                )
+            )
 
         offset = self.options.zero_offset + self.options.policy_gcs_edge_cost_offset
         fig.update_layout(title=r"$\text{Cost-to-go comparison over set }\;X_w$")
-        fig.add_trace(go.Scatter(x=x_lin, y=np.vectorize(evaluate_0)(x_lin)-offset, mode='lines', name=r"$c(x,x')+J_w(x')$", line=dict(color="red") ))
-        plot_min(x_lin, np.vectorize(evaluate_0)(x_lin)-offset, fig, "red", r"$\min c(x,x')+J_w(x')$")
+        fig.add_trace(
+            go.Scatter(
+                x=x_lin,
+                y=np.vectorize(evaluate_0)(x_lin) - offset,
+                mode="lines",
+                name=r"$c(x,x')+J_w(x')$",
+                line=dict(color="red"),
+            )
+        )
+        plot_min(
+            x_lin,
+            np.vectorize(evaluate_0)(x_lin) - offset,
+            fig,
+            "red",
+            r"$\min c(x,x')+J_w(x')$",
+        )
 
         if not plot_just_1:
-            fig.add_trace(go.Scatter(x=x_lin, y=np.vectorize(evaluate_1)(x_lin)-offset, mode='lines', name = r"$\text{noise}=%d,\; c(x,x')+J_w(x')-\text{LM}$" %self.options.noise_magnitude, line=dict(color="blue") ))
-            plot_min(x_lin, np.vectorize(evaluate_1)(x_lin)-offset, fig, "blue", r"$\text{noise}=%d,\; \min c(x,x')+J_w(x')-\text{LM}$" %self.options.noise_magnitude)
+            fig.add_trace(
+                go.Scatter(
+                    x=x_lin,
+                    y=np.vectorize(evaluate_1)(x_lin) - offset,
+                    mode="lines",
+                    name=r"$\text{noise}=%d,\; c(x,x')+J_w(x')-\text{LM}$"
+                    % self.options.noise_magnitude,
+                    line=dict(color="blue"),
+                )
+            )
+            plot_min(
+                x_lin,
+                np.vectorize(evaluate_1)(x_lin) - offset,
+                fig,
+                "blue",
+                r"$\text{noise}=%d,\; \min c(x,x')+J_w(x')-\text{LM}$"
+                % self.options.noise_magnitude,
+            )
 
         # fig.add_trace(go.Scatter(x=x_lin, y=np.vectorize(evaluate_1)(x_lin)-offset, mode='lines', name = r"$\gamma=%d,\; c(x,x')+J_w(x')-\text{LM}$" %gamma, line=dict(color="blue") ))
         # plot_min(x_lin, np.vectorize(evaluate_1)(x_lin)-offset, fig, "blue", r"$\gamma=%d,\; \min c(x,x')+J_w(x')-\text{LM}$" %gamma)
@@ -559,97 +654,168 @@ class PolynomialDualGCS:
         # fig.add_trace(go.Scatter(x=x_lin, y=np.vectorize(evaluate_3)(x_lin)-offset, mode='lines', name="c-BB-B", line=dict(color="purple") ))
         # fig.add_trace(go.Scatter(x=x_lin, y=np.vectorize(evaluate_4)(x_lin)-offset, mode='lines', name="-BB-B", line=dict(color="magenta") ))
 
-        
-        
         # plot_min(x_lin, np.vectorize(evaluate_2)(x_lin)-offset, fig, "green")
         # plot_min(x_lin, np.vectorize(evaluate_3)(x_lin)-offset, fig, "purple")
         # plot_min(x_lin, np.vectorize(evaluate_4)(x_lin)-offset, fig, "magenta")
 
-    def make_1d_plot_edge_1_step_just_gamma(self, fig:go.Figure, edge: DualEdge, x_point:npt.NDArray, offset=0, gamma=0, color="blue"):
+    def make_1d_plot_edge_1_step_just_gamma(
+        self,
+        fig: go.Figure,
+        edge: DualEdge,
+        x_point: npt.NDArray,
+        offset=0,
+        gamma=0,
+        color="blue",
+    ):
         v = edge.right
         assert type(v.convex_set) == Hyperrectangle
         assert len(v.convex_set.lb()) == 1
-        x_lin = np.linspace(v.convex_set.lb()[0], v.convex_set.ub()[0], 100, endpoint=True)
+        x_lin = np.linspace(
+            v.convex_set.lb()[0], v.convex_set.ub()[0], 100, endpoint=True
+        )
 
         potential = self.value_function_solution.GetSolution(v.potential)
-        f_potential = lambda x: potential.Substitute({v.x[i]: x[i] for i in range(v.state_dim)})
-        
+        f_potential = lambda x: potential.Substitute(
+            {v.x[i]: x[i] for i in range(v.state_dim)}
+        )
+
         q = self.value_function_solution.GetSolution(edge.lambda_1_right)
         Q = self.value_function_solution.GetSolution(edge.lambda_2_right)
         B = v.B
 
         def evaluate_0(y):
-            return (QUADRATIC_COST(x_point,np.array([y]) ) + f_potential(np.array([y]))).Evaluate()
-            
+            return (
+                QUADRATIC_COST(x_point, np.array([y])) + f_potential(np.array([y]))
+            ).Evaluate()
+
         def evaluate_1(y):
-            Y = np.outer( np.array([1,y]), np.array([1,y]) )
-            return (QUADRATIC_COST(x_point,np.array([y])) + f_potential(np.array([y])) - np.sum( B.dot(Y).dot(B.T) * Q)).Evaluate()
-        
+            Y = np.outer(np.array([1, y]), np.array([1, y]))
+            return (
+                QUADRATIC_COST(x_point, np.array([y]))
+                + f_potential(np.array([y]))
+                - np.sum(B.dot(Y).dot(B.T) * Q)
+            ).Evaluate()
+
         def evaluate_2(y):
-            Y = np.outer( np.array([1,y]), np.array([1,y]) )
-            return (QUADRATIC_COST(x_point,np.array([y])) + f_potential(np.array([y])) - np.sum( B.dot(Y).dot(B.T) * Q) - B.dot(np.array([1,y])).dot(q)).Evaluate()
-        
+            Y = np.outer(np.array([1, y]), np.array([1, y]))
+            return (
+                QUADRATIC_COST(x_point, np.array([y]))
+                + f_potential(np.array([y]))
+                - np.sum(B.dot(Y).dot(B.T) * Q)
+                - B.dot(np.array([1, y])).dot(q)
+            ).Evaluate()
+
         def evaluate_3(y):
-            Y = np.outer( np.array([1,y]), np.array([1,y]) )
-            return (QUADRATIC_COST(x_point,np.array([y])) - np.sum( B.dot(Y).dot(B.T) * Q) - B.dot(np.array([1,y])).dot(q))
-        
+            Y = np.outer(np.array([1, y]), np.array([1, y]))
+            return (
+                QUADRATIC_COST(x_point, np.array([y]))
+                - np.sum(B.dot(Y).dot(B.T) * Q)
+                - B.dot(np.array([1, y])).dot(q)
+            )
+
         def evaluate_4(y):
-            Y = np.outer( np.array([1,y]), np.array([1,y]) )
-            return ( - np.sum( B.dot(Y).dot(B.T) * Q) - B.dot(np.array([1,y])).dot(q))
-        
-        def plot_min(x, y, fig, color,name):
+            Y = np.outer(np.array([1, y]), np.array([1, y]))
+            return -np.sum(B.dot(Y).dot(B.T) * Q) - B.dot(np.array([1, y])).dot(q)
+
+        def plot_min(x, y, fig, color, name):
             # Find the index of the minimum y value
             min_y_index = np.argmin(y)
             # Get the corresponding x value
             min_x_value = x[min_y_index]
             min_y_value = y[min_y_index]
-            fig.add_trace(go.Scatter(x=[min_x_value], y=[min_y_value], mode='markers', line=dict(color=color), showlegend=True, name=name))
+            fig.add_trace(
+                go.Scatter(
+                    x=[min_x_value],
+                    y=[min_y_value],
+                    mode="markers",
+                    line=dict(color=color),
+                    showlegend=True,
+                    name=name,
+                )
+            )
 
         # fig.update_layout(title=r"$\text{Cost-to-go comparison over set }\;X_w$")
         # fig.add_trace(go.Scatter(x=x_lin, y=np.vectorize(evaluate_0)(x_lin)-offset, mode='lines', name=r"$c(x,x')+J_w(x')$", line=dict(color="red") ))
-        fig.add_trace(go.Scatter(x=x_lin, y=np.vectorize(evaluate_1)(x_lin)-offset, mode='lines', name = r"$\gamma=%d,\; c(x,x')+J_w(x')-\text{LM}$" %gamma, line=dict(color=color) ))
-        plot_min(x_lin, np.vectorize(evaluate_1)(x_lin)-offset, fig, color=color, name=r"$\gamma=%d,\; \min c(x,x')+J_w(x')-\text{LM}$" %gamma)
+        fig.add_trace(
+            go.Scatter(
+                x=x_lin,
+                y=np.vectorize(evaluate_1)(x_lin) - offset,
+                mode="lines",
+                name=r"$\gamma=%d,\; c(x,x')+J_w(x')-\text{LM}$" % gamma,
+                line=dict(color=color),
+            )
+        )
+        plot_min(
+            x_lin,
+            np.vectorize(evaluate_1)(x_lin) - offset,
+            fig,
+            color=color,
+            name=r"$\gamma=%d,\; \min c(x,x')+J_w(x')-\text{LM}$" % gamma,
+        )
         # fig.add_trace(go.Scatter(x=x_lin, y=np.vectorize(evaluate_2)(x_lin)-offset, mode='lines', name="c+J-BB-B", line=dict(color="green") ))
         # fig.add_trace(go.Scatter(x=x_lin, y=np.vectorize(evaluate_3)(x_lin)-offset, mode='lines', name="c-BB-B", line=dict(color="purple") ))
         # fig.add_trace(go.Scatter(x=x_lin, y=np.vectorize(evaluate_4)(x_lin)-offset, mode='lines', name="-BB-B", line=dict(color="magenta") ))
 
         # plot_min(x_lin, np.vectorize(evaluate_0)(x_lin)-offset, fig, "red")
-        
-    def make_2d_plot_edge_1_step(self, fig:go.Figure, edge: DualEdge, x_point:npt.NDArray, offset=0):
+
+    def make_2d_plot_edge_1_step(
+        self, fig: go.Figure, edge: DualEdge, x_point: npt.NDArray, offset=0
+    ):
         v = edge.right
         assert type(v.convex_set) == Hyperrectangle
         assert len(v.convex_set.lb()) == 2
-        x_lin = np.linspace(v.convex_set.lb()[0], v.convex_set.ub()[0], 100, endpoint=True)
-        y_lin = np.linspace(v.convex_set.lb()[1], v.convex_set.ub()[1], 100, endpoint=True)
+        x_lin = np.linspace(
+            v.convex_set.lb()[0], v.convex_set.ub()[0], 100, endpoint=True
+        )
+        y_lin = np.linspace(
+            v.convex_set.lb()[1], v.convex_set.ub()[1], 100, endpoint=True
+        )
         X, Y = np.meshgrid(x_lin, y_lin)
 
         potential = self.value_function_solution.GetSolution(v.potential)
-        f_potential = lambda x: potential.Substitute({v.x[i]: x[i] for i in range(v.state_dim)})
-        
+        f_potential = lambda x: potential.Substitute(
+            {v.x[i]: x[i] for i in range(v.state_dim)}
+        )
+
         q = self.value_function_solution.GetSolution(edge.lambda_1_right)
         Q = self.value_function_solution.GetSolution(edge.lambda_2_right)
         B = v.B
-        
 
-        def evaluate_0(x,y):
-            return (QUADRATIC_COST(x_point, np.array([x,y]) ) + f_potential(np.array([x,y]))).Evaluate()
-            
-        def evaluate_1(x,y):
-            Y = np.outer( np.array([1,x, y]), np.array([1,x, y]) )
-            return (QUADRATIC_COST(x_point,np.array([x, y])) + f_potential(np.array([x, y])) - np.sum( B.dot(Y).dot(B.T) * Q)).Evaluate()
-        
+        def evaluate_0(x, y):
+            return (
+                QUADRATIC_COST(x_point, np.array([x, y]))
+                + f_potential(np.array([x, y]))
+            ).Evaluate()
+
+        def evaluate_1(x, y):
+            Y = np.outer(np.array([1, x, y]), np.array([1, x, y]))
+            return (
+                QUADRATIC_COST(x_point, np.array([x, y]))
+                + f_potential(np.array([x, y]))
+                - np.sum(B.dot(Y).dot(B.T) * Q)
+            ).Evaluate()
+
         def evaluate_2(x, y):
-            Y = np.outer( np.array([1,x,y]), np.array([1,x,y]) )
-            return (QUADRATIC_COST(x_point,np.array([x, y])) + f_potential(np.array([x, y])) - np.sum( B.dot(Y).dot(B.T) * Q) - B.dot(np.array([1, x, y])).dot(q)).Evaluate()
-        
-        def evaluate_3(x,y):
-            Y = np.outer( np.array([1,x,y]), np.array([1,x,y]) )
-            return (QUADRATIC_COST(x_point,np.array([x,y])) - np.sum( B.dot(Y).dot(B.T) * Q) - B.dot(np.array([1,x,y])).dot(q))
-        
-        def evaluate_4(x,y):
-            Y = np.outer( np.array([1,x,y]), np.array([1,x,y]) )
-            return ( - np.sum( B.dot(Y).dot(B.T) * Q) - B.dot(np.array([1,x,y])).dot(q))
-        
+            Y = np.outer(np.array([1, x, y]), np.array([1, x, y]))
+            return (
+                QUADRATIC_COST(x_point, np.array([x, y]))
+                + f_potential(np.array([x, y]))
+                - np.sum(B.dot(Y).dot(B.T) * Q)
+                - B.dot(np.array([1, x, y])).dot(q)
+            ).Evaluate()
+
+        def evaluate_3(x, y):
+            Y = np.outer(np.array([1, x, y]), np.array([1, x, y]))
+            return (
+                QUADRATIC_COST(x_point, np.array([x, y]))
+                - np.sum(B.dot(Y).dot(B.T) * Q)
+                - B.dot(np.array([1, x, y])).dot(q)
+            )
+
+        def evaluate_4(x, y):
+            Y = np.outer(np.array([1, x, y]), np.array([1, x, y]))
+            return -np.sum(B.dot(Y).dot(B.T) * Q) - B.dot(np.array([1, x, y])).dot(q)
+
         def plot_min(x, y, z, fig, color):
             min_z_index = np.unravel_index(np.argmin(z, axis=None), z.shape)
 
@@ -658,55 +824,101 @@ class PolynomialDualGCS:
             min_y_value = y[min_z_index]
             min_z_value = z[min_z_index]
 
-            fig.add_trace(go.Scatter3d(x=[min_x_value], y=[min_y_value], z=[min_z_value],
-                           mode='markers', marker=dict(size=5, color=color), showlegend=False))
-        
+            fig.add_trace(
+                go.Scatter3d(
+                    x=[min_x_value],
+                    y=[min_y_value],
+                    z=[min_z_value],
+                    mode="markers",
+                    marker=dict(size=5, color=color),
+                    showlegend=False,
+                )
+            )
+
         # Create filled 3D contours
-        Z0 = np.vectorize(evaluate_0)(X, Y)-offset
-        Z1 = np.vectorize(evaluate_1)(X, Y)-offset
-        Z2 = np.vectorize(evaluate_2)(X, Y)-offset
-        Z3 = np.vectorize(evaluate_3)(X, Y)-offset
-        Z4 = np.vectorize(evaluate_4)(X, Y)-offset
-        fig.add_trace(go.Surface(x=X, y=Y, z=Z0, colorscale=[[0, "red"], [1, "red"]], name = "c+J"))
-        fig.add_trace(go.Surface(x=X, y=Y, z=Z1, colorscale=[[0, "blue"], [1, "blue"]], name = "c+J-BB"))
-        fig.add_trace(go.Surface(x=X, y=Y, z=Z2, colorscale=[[0, "green"], [1, "green"]], name = "c+J-BB-B"))
-        fig.add_trace(go.Surface(x=X, y=Y, z=Z3, colorscale=[[0, "purple"], [1, "purple"]], name = "c-BB-B"))
-        fig.add_trace(go.Surface(x=X, y=Y, z=Z4, colorscale=[[0, "magenta"], [1, "magenta"]], name = "-BB-B"))
+        Z0 = np.vectorize(evaluate_0)(X, Y) - offset
+        Z1 = np.vectorize(evaluate_1)(X, Y) - offset
+        Z2 = np.vectorize(evaluate_2)(X, Y) - offset
+        Z3 = np.vectorize(evaluate_3)(X, Y) - offset
+        Z4 = np.vectorize(evaluate_4)(X, Y) - offset
+        fig.add_trace(
+            go.Surface(x=X, y=Y, z=Z0, colorscale=[[0, "red"], [1, "red"]], name="c+J")
+        )
+        fig.add_trace(
+            go.Surface(
+                x=X, y=Y, z=Z1, colorscale=[[0, "blue"], [1, "blue"]], name="c+J-BB"
+            )
+        )
+        fig.add_trace(
+            go.Surface(
+                x=X, y=Y, z=Z2, colorscale=[[0, "green"], [1, "green"]], name="c+J-BB-B"
+            )
+        )
+        fig.add_trace(
+            go.Surface(
+                x=X, y=Y, z=Z3, colorscale=[[0, "purple"], [1, "purple"]], name="c-BB-B"
+            )
+        )
+        fig.add_trace(
+            go.Surface(
+                x=X,
+                y=Y,
+                z=Z4,
+                colorscale=[[0, "magenta"], [1, "magenta"]],
+                name="-BB-B",
+            )
+        )
 
-        plot_min(X,Y,Z0, fig, "red")
-        plot_min(X,Y,Z1, fig, "blue")
-        plot_min(X,Y,Z2, fig, "green")
-        plot_min(X,Y,Z3, fig, "purple")
-        plot_min(X,Y,Z4, fig, "magenta")
+        plot_min(X, Y, Z0, fig, "red")
+        plot_min(X, Y, Z1, fig, "blue")
+        plot_min(X, Y, Z2, fig, "green")
+        plot_min(X, Y, Z3, fig, "purple")
+        plot_min(X, Y, Z4, fig, "magenta")
 
-    def get_policy_edge_cost(self, edge:DualEdge, add_potential:bool, force_dont_add_s_proecdure:bool=False, force_dont_add_noise=False):
-        def cost_function(x,y):
-            cost = QUADRATIC_COST(x,y)
+    def get_policy_edge_cost(
+        self,
+        edge: DualEdge,
+        add_potential: bool,
+        force_dont_add_s_proecdure: bool = False,
+        force_dont_add_noise=False,
+    ):
+        def cost_function(x, y):
+            cost = QUADRATIC_COST(x, y)
 
             s_procedure_terms = Expression(0)
-            if self.options.policy_subtract_full_s_procedure or self.options.policy_subtract_right_vertex_s_procedure:
+            if (
+                self.options.policy_subtract_full_s_procedure
+                or self.options.policy_subtract_right_vertex_s_procedure
+            ):
                 # subtract right-vertex relaxation terms
                 Qr = self.value_function_solution.GetSolution(edge.lambda_2_right)
                 qr = self.value_function_solution.GetSolution(edge.lambda_1_right)
                 Br = edge.right.B
-                Y = np.outer( np.hstack(([1], y)), np.hstack(([1], y)) )
-                s_procedure_terms -= np.sum( Br.dot(Y).dot(Br.T) * Qr) 
-                s_procedure_terms -= Br.dot( np.hstack(([1], y)) ).dot(qr)
+                Y = np.outer(np.hstack(([1], y)), np.hstack(([1], y)))
+                s_procedure_terms -= np.sum(Br.dot(Y).dot(Br.T) * Qr)
+                s_procedure_terms -= Br.dot(np.hstack(([1], y))).dot(qr)
 
                 if edge.force_deterministic:
                     pass
-                elif self.options.solve_ot_relaxed_stochastic_transitions or self.options.solve_ot_deterministic_transitions_inflated:
-                    s_procedure_terms -= self.value_function_solution.GetSolution(edge.delta)
+                elif (
+                    self.options.solve_ot_relaxed_stochastic_transitions
+                    or self.options.solve_ot_deterministic_transitions_inflated
+                ):
+                    s_procedure_terms -= self.value_function_solution.GetSolution(
+                        edge.delta
+                    )
                 elif self.options.solve_ot_stochastic_transitions:
                     Sigma = edge.noise_mat
-                    s_procedure_terms -= np.sum( Br.dot(Sigma).dot(Br.T) * Qr) 
+                    s_procedure_terms -= np.sum(Br.dot(Sigma).dot(Br.T) * Qr)
                 elif self.options.solve_robustified_set_membership:
                     Sigma = edge.noise_mat
                     if edge.left.name != "s":
-                        Ql = self.value_function_solution.GetSolution(edge.lambda_2_left)
+                        Ql = self.value_function_solution.GetSolution(
+                            edge.lambda_2_left
+                        )
                         Bl = edge.left.B
-                        s_procedure_terms -= np.sum( Bl.dot(Sigma).dot(Bl.T) * Ql) 
-                    s_procedure_terms -= np.sum( Br.dot(Sigma).dot(Br.T) * Qr) 
+                        s_procedure_terms -= np.sum(Bl.dot(Sigma).dot(Bl.T) * Ql)
+                    s_procedure_terms -= np.sum(Br.dot(Sigma).dot(Br.T) * Qr)
 
             if self.options.policy_subtract_full_s_procedure:
                 QLR = self.value_function_solution.GetSolution(edge.lambda_2_left_right)
@@ -714,12 +926,12 @@ class PolynomialDualGCS:
                 qL = self.value_function_solution.GetSolution(edge.lambda_1_left)
                 BL = edge.right.B
                 BR = edge.left.B
-                YL = np.outer( np.hstack(([1], x)), np.hstack(([1], x)) )
-                YLR = np.outer( np.hstack(([1], x)), np.hstack(([1], y)) )
+                YL = np.outer(np.hstack(([1], x)), np.hstack(([1], x)))
+                YLR = np.outer(np.hstack(([1], x)), np.hstack(([1], y)))
 
-                s_procedure_terms -= np.sum( BL.dot(YL).dot(BL.T) * QL)
-                s_procedure_terms -= BL.dot( np.hstack(([1], x)) ).dot(qL)
-                s_procedure_terms -= np.sum( BL.dot(YLR).dot(BR.T) * QLR)
+                s_procedure_terms -= np.sum(BL.dot(YL).dot(BL.T) * QL)
+                s_procedure_terms -= BL.dot(np.hstack(([1], x))).dot(qL)
+                s_procedure_terms -= np.sum(BL.dot(YLR).dot(BR.T) * QLR)
 
             if force_dont_add_s_proecdure:
                 s_procedure_terms = Expression(0)
@@ -727,64 +939,85 @@ class PolynomialDualGCS:
             cost += s_procedure_terms
 
             if add_potential:
-                potential = self.value_function_solution.GetSolution(edge.right.potential)
-                f_potential = lambda x: potential.Substitute({edge.right.x[i]: x[i] for i in range(edge.right.state_dim)})
+                potential = self.value_function_solution.GetSolution(
+                    edge.right.potential
+                )
+                f_potential = lambda x: potential.Substitute(
+                    {edge.right.x[i]: x[i] for i in range(edge.right.state_dim)}
+                )
                 cost += f_potential(y)
-                
+
                 if self.options.solve_ot_stochastic_transitions:
                     Jr = self.value_function_solution.GetSolution(edge.right.J)
                     Sigma = edge.noise_mat
                     if not force_dont_add_noise:
-                        cost += np.sum( Jr * Sigma) 
+                        cost += np.sum(Jr * Sigma)
             # this is done because GCS doesn't like negative costs
             cost += self.options.policy_gcs_edge_cost_offset
             return cost
+
         return cost_function
 
-    def solve_restriction(self, vertices: T.List[DualVertex], x_0:npt.NDArray) -> T.Tuple[float, npt.NDArray, DualVertex, npt.NDArray]:
+    def solve_restriction(
+        self, vertices: T.List[DualVertex], x_0: npt.NDArray
+    ) -> T.Tuple[float, npt.NDArray, DualVertex, npt.NDArray]:
         prog = MathematicalProgram()
-        assert np.all(vertices[0].B.dot(np.hstack(([1], x_0))) >= 0-1e-3, )
+        assert np.all(
+            vertices[0].B.dot(np.hstack(([1], x_0))) >= 0 - 1e-3,
+        )
         x_n = x_0
         x_traj = []
         for v_index in range(1, len(vertices)):
             v = vertices[v_index]
-            edge = self.edges[get_edge_name(vertices[v_index-1].name, v.name)]
+            edge = self.edges[get_edge_name(vertices[v_index - 1].name, v.name)]
 
-            cost_function = self.get_policy_edge_cost(edge, (v_index == len(vertices)-1) )
-            
+            cost_function = self.get_policy_edge_cost(
+                edge, (v_index == len(vertices) - 1)
+            )
+
             x_n1 = prog.NewContinuousVariables(v.state_dim)
             x_traj.append(x_n1)
-            prog.AddLinearConstraint( ge(v.B.dot(np.hstack(([1], x_n1))), 0 ) )
-            prog.AddCost( cost_function(x_n, x_n1) )
+            prog.AddLinearConstraint(ge(v.B.dot(np.hstack(([1], x_n1))), 0))
+            prog.AddCost(cost_function(x_n, x_n1))
             x_n = x_n1
 
         solution = Solve(prog)
         # INFO(solution.get_solver_id().name())
         assert solution.is_success()
-        x_traj_solution = np.array( [solution.GetSolution(xn) for xn in x_traj] )
+        x_traj_solution = np.array([solution.GetSolution(xn) for xn in x_traj])
         cost = solution.get_optimal_cost()
         x_next = x_traj_solution[0]
         return cost, x_next, vertices[1], x_traj_solution
 
-    def solve_m_step_policy(self, layers:T.List[T.List[DualVertex]], m:int, start_vertex:DualVertex, x_0:npt.NDArray, layer_index:int):
-        first_index = layer_index+1
-        last_index = min(len(layers), layer_index+m+1)
+    def solve_m_step_policy(
+        self,
+        layers: T.List[T.List[DualVertex]],
+        m: int,
+        start_vertex: DualVertex,
+        x_0: npt.NDArray,
+        layer_index: int,
+    ):
+        first_index = layer_index + 1
+        last_index = min(len(layers), layer_index + m + 1)
         relevant_layers = layers[first_index:last_index]
         upper = [len(layer) for layer in relevant_layers]
 
         def get_vertex_sequence(index_sequence):
-            return [start_vertex] + [relevant_layers[i][int(index_sequence[i])] for i in range(len(index_sequence)) ]
-        
-        def get_next_index_sequence(vec:npt.NDArray, upper:npt.NDArray):
-            for i in range(len(vec)-1, -1, -1):
-                vec[i] = vec[i]+ 1 
-                if vec[i] < upper[i]-1e-5:
+            return [start_vertex] + [
+                relevant_layers[i][int(index_sequence[i])]
+                for i in range(len(index_sequence))
+            ]
+
+        def get_next_index_sequence(vec: npt.NDArray, upper: npt.NDArray):
+            for i in range(len(vec) - 1, -1, -1):
+                vec[i] = vec[i] + 1
+                if vec[i] < upper[i] - 1e-5:
                     break
                 vec[i] = 0
             if np.allclose(vec, np.zeros(len(vec))):
                 return False, vec
             return True, vec
-        
+
         true_cost = start_vertex.cost_at_point(x_0, self.value_function_solution)
         # print(true_cost)
         best_cost, best_action, best_vertex = np.inf, None, None
@@ -793,8 +1026,12 @@ class PolynomialDualGCS:
         while go_on:
             vertex_sequence = get_vertex_sequence(index_sequence)
             # print(vertex_sequence)
-            new_cost, new_action, new_vertex, _ = self.solve_restriction(vertex_sequence, x_0)
-            if np.abs(new_cost-true_cost) < np.abs(best_cost-true_cost): # TODO: make this into an option
+            new_cost, new_action, new_vertex, _ = self.solve_restriction(
+                vertex_sequence, x_0
+            )
+            if np.abs(new_cost - true_cost) < np.abs(
+                best_cost - true_cost
+            ):  # TODO: make this into an option
                 best_cost, best_action, best_vertex = new_cost, new_action, new_vertex
             go_on, index_sequence = get_next_index_sequence(index_sequence, upper)
 
@@ -803,17 +1040,25 @@ class PolynomialDualGCS:
 
 
 ## ------------------------------------------------------
-# extracting policy 
+# extracting policy
 
-def solve_m_step_horizon_from_layers(gcs:PolynomialDualGCS, layers:T.List[T.List[DualVertex]], m:int, start_vertex:DualVertex, layer_index:int, point:npt.NDArray):
+
+def solve_m_step_horizon_from_layers(
+    gcs: PolynomialDualGCS,
+    layers: T.List[T.List[DualVertex]],
+    m: int,
+    start_vertex: DualVertex,
+    layer_index: int,
+    point: npt.NDArray,
+):
     new_gcs = GraphOfConvexSets()
     init_vertex = new_gcs.AddVertex(Point(point), start_vertex.name)
     new_layers = []
     new_layers.append([init_vertex])
 
     # for every layer
-    last_index = min(len(layers)-1, layer_index+m)
-    for n in range(layer_index+1, last_index+1):
+    last_index = min(len(layers) - 1, layer_index + m)
+    for n in range(layer_index + 1, last_index + 1):
         layer = []
         for og_graph_v in layers[n]:
             new_v = new_gcs.AddVertex(og_graph_v.convex_set, og_graph_v.name)
@@ -821,24 +1066,25 @@ def solve_m_step_horizon_from_layers(gcs:PolynomialDualGCS, layers:T.List[T.List
 
             # connect with edges to previous layer
             for left_v in new_layers[-1]:
-                edge = gcs.edges[ get_edge_name(left_v.name(), new_v.name()) ]
+                edge = gcs.edges[get_edge_name(left_v.name(), new_v.name())]
 
-                cost_function = gcs.get_policy_edge_cost(edge, (n == last_index) )
-                
-                new_edge = new_gcs.AddEdge(left_v, new_v, get_edge_name(left_v.name(), new_v.name()) )
-                new_edge.AddCost( cost_function(new_edge.xu(), new_edge.xv()))
+                cost_function = gcs.get_policy_edge_cost(edge, (n == last_index))
+
+                new_edge = new_gcs.AddEdge(
+                    left_v, new_v, get_edge_name(left_v.name(), new_v.name())
+                )
+                new_edge.AddCost(cost_function(new_edge.xu(), new_edge.xv()))
 
         new_layers.append(layer)
 
-    target_v = new_gcs.AddVertex(Hyperrectangle([0],[0]), "target" )
+    target_v = new_gcs.AddVertex(Hyperrectangle([0], [0]), "target")
     for left_v in new_layers[-1]:
-        new_gcs.AddEdge(left_v, target_v, get_edge_name(left_v.name(), target_v.name()) )
-
+        new_gcs.AddEdge(left_v, target_v, get_edge_name(left_v.name(), target_v.name()))
 
     gcs_options = GraphOfConvexSetsOptions()
     gcs_options.convex_relaxation = True
     gcs_options.max_rounded_paths = 30
-    gcs_options.max_rounding_trials = 30        
+    gcs_options.max_rounding_trials = 30
     gcs_options.solver = MosekSolver()
 
     # solve
@@ -857,48 +1103,94 @@ def solve_m_step_horizon_from_layers(gcs:PolynomialDualGCS, layers:T.List[T.List
     return cost, vertex_name_path, value_path
 
 
-def get_next_action_gcs(gcs:PolynomialDualGCS, layers:T.List[T.List[DualVertex]], m:int, vertex:DualVertex, point:npt.NDArray, layer_index:int):
-    cost, vertex_name_path, value_path = solve_m_step_horizon_from_layers(gcs, layers, m, vertex, layer_index, point)
+def get_next_action_gcs(
+    gcs: PolynomialDualGCS,
+    layers: T.List[T.List[DualVertex]],
+    m: int,
+    vertex: DualVertex,
+    point: npt.NDArray,
+    layer_index: int,
+):
+    cost, vertex_name_path, value_path = solve_m_step_horizon_from_layers(
+        gcs, layers, m, vertex, layer_index, point
+    )
     # print(cost, vertex_name_path[1], value_path[1])
     return gcs.vertices[vertex_name_path[1]], value_path[1]
 
-def rollout_m_step_policy(gcs:PolynomialDualGCS, layers:T.List[T.List[DualVertex]], m:int, vertex:DualVertex, point:npt.NDArray, layer_index:int) -> T.Tuple[float, T.List[DualVertex], T.List[npt.NDArray]]:
-    if layer_index < len(layers)-1:
+
+def rollout_m_step_policy(
+    gcs: PolynomialDualGCS,
+    layers: T.List[T.List[DualVertex]],
+    m: int,
+    vertex: DualVertex,
+    point: npt.NDArray,
+    layer_index: int,
+) -> T.Tuple[float, T.List[DualVertex], T.List[npt.NDArray]]:
+    if layer_index < len(layers) - 1:
         if gcs.options.policy_use_gcs:
-            next_vertex, next_point = get_next_action_gcs(gcs, layers, m, vertex, point, layer_index)
+            next_vertex, next_point = get_next_action_gcs(
+                gcs, layers, m, vertex, point, layer_index
+            )
         else:
-            next_vertex, next_point = gcs.solve_m_step_policy(layers, m, vertex, point, layer_index)
-        cost, vertex_trajectory, trajectory = rollout_m_step_policy(gcs, layers, m, next_vertex, next_point, layer_index+1)
-        return QUADRATIC_COST(point, next_point) + cost, [next_vertex] + vertex_trajectory, [next_point] + trajectory
+            next_vertex, next_point = gcs.solve_m_step_policy(
+                layers, m, vertex, point, layer_index
+            )
+        cost, vertex_trajectory, trajectory = rollout_m_step_policy(
+            gcs, layers, m, next_vertex, next_point, layer_index + 1
+        )
+        return (
+            QUADRATIC_COST(point, next_point) + cost,
+            [next_vertex] + vertex_trajectory,
+            [next_point] + trajectory,
+        )
     else:
         return 0.0, [], []
 
 
-def plot_policy_rollout(gcs:PolynomialDualGCS, layers:T.List[T.List[DualVertex]], m:int, vertex:DualVertex, layer_index:int, fig:go.Figure, point:npt.NDArray):
-    _, vertex_trajectory, trajectory = rollout_m_step_policy(gcs, layers, m, vertex, point, layer_index)
+def plot_policy_rollout(
+    gcs: PolynomialDualGCS,
+    layers: T.List[T.List[DualVertex]],
+    m: int,
+    vertex: DualVertex,
+    layer_index: int,
+    fig: go.Figure,
+    point: npt.NDArray,
+):
+    _, vertex_trajectory, trajectory = rollout_m_step_policy(
+        gcs, layers, m, vertex, point, layer_index
+    )
     vertex_trajectory = [vertex] + vertex_trajectory
     trajectory = [point] + trajectory
 
-    x,y,z = [],[],[]
+    x, y, z = [], [], []
     n = len(vertex_trajectory)
     for i in range(n):
         point = trajectory[i]
-        x.append(point[0]) 
+        x.append(point[0])
         y.append(point[1])
         z.append(vertex_trajectory[i].cost_at_point(point, gcs.value_function_solution))
-    fig.add_traces(go.Scatter3d(x=x, y=y, z=np.array(z)-gcs.options.zero_offset, mode='lines', line=dict(width=5, color='black')))
-    
+    fig.add_traces(
+        go.Scatter3d(
+            x=x,
+            y=y,
+            z=np.array(z) - gcs.options.zero_offset,
+            mode="lines",
+            line=dict(width=5, color="black"),
+        )
+    )
 
 
 ########################################################################
 # plotting trajectories
 
-def plot_a_layered_graph_1d(layers:T.List[T.List[DualVertex]]):
+
+def plot_a_layered_graph_1d(layers: T.List[T.List[DualVertex]]):
     fig = go.Figure()
+
     def add_trace(x_min, x_max, y):
-        xs = [x_min,x_max]
-        ys = [y,y]
-        fig.add_trace(go.Scatter(x=xs, y=ys, line=dict(color="black") ))
+        xs = [x_min, x_max]
+        ys = [y, y]
+        fig.add_trace(go.Scatter(x=xs, y=ys, line=dict(color="black")))
 
     y = len(layers)
     for n, layer in enumerate(layers):
@@ -910,16 +1202,24 @@ def plot_a_layered_graph_1d(layers:T.List[T.List[DualVertex]]):
     fig.update_layout(showlegend=False)
     fig.update_layout(
         yaxis=dict(scaleanchor="x"),  # set y-axis to have the same scaling as x-axis
-        yaxis2=dict(scaleanchor="x", overlaying="y", side="right"),  # set y-axis2 to have the same scaling as x-axis
+        yaxis2=dict(
+            scaleanchor="x", overlaying="y", side="right"
+        ),  # set y-axis2 to have the same scaling as x-axis
     )
     return fig
 
-def plot_a_layered_graph_2d(layers:T.List[T.List[DualVertex]]):
+
+def plot_a_layered_graph_2d(layers: T.List[T.List[DualVertex]]):
     fig = go.Figure()
+
     def add_trace(lb, ub):
         xs = [lb[0], lb[0], ub[0], ub[0], lb[0]]
         ys = [lb[1], ub[1], ub[1], lb[1], lb[1]]
-        fig.add_trace(go.Scatter(x=xs, y=ys, line=dict(color="black"), fillcolor='grey', fill='tozeroy' ))
+        fig.add_trace(
+            go.Scatter(
+                x=xs, y=ys, line=dict(color="black"), fillcolor="grey", fill="tozeroy"
+            )
+        )
 
     for layer in layers:
         for v in layer:
@@ -929,38 +1229,60 @@ def plot_a_layered_graph_2d(layers:T.List[T.List[DualVertex]]):
     fig.update_layout(showlegend=False)
     fig.update_layout(
         yaxis=dict(scaleanchor="x"),  # set y-axis to have the same scaling as x-axis
-        yaxis2=dict(scaleanchor="x", overlaying="y", side="right"),  # set y-axis2 to have the same scaling as x-axis
+        yaxis2=dict(
+            scaleanchor="x", overlaying="y", side="right"
+        ),  # set y-axis2 to have the same scaling as x-axis
     )
     return fig
 
-def plot_policy_rollout_1d(gcs:PolynomialDualGCS, layers:T.List[T.List[DualVertex]], m:int, vertex:DualVertex, layer_index:int, fig:go.Figure, point:npt.NDArray):
-    _, vertex_trajectory, trajectory = rollout_m_step_policy(gcs, layers, m, vertex, point, layer_index)
+
+def plot_policy_rollout_1d(
+    gcs: PolynomialDualGCS,
+    layers: T.List[T.List[DualVertex]],
+    m: int,
+    vertex: DualVertex,
+    layer_index: int,
+    fig: go.Figure,
+    point: npt.NDArray,
+):
+    _, vertex_trajectory, trajectory = rollout_m_step_policy(
+        gcs, layers, m, vertex, point, layer_index
+    )
     vertex_trajectory = [vertex] + vertex_trajectory
     trajectory = [point] + trajectory
 
-    x,y = [],[]
+    x, y = [], []
     n = len(vertex_trajectory)
     # print("trajectory: ", trajectory)
     for i in range(n):
         point = trajectory[i]
-        x.append(point[0]) 
-        y.append(n-i)
+        x.append(point[0])
+        y.append(n - i)
 
     fig.add_trace(go.Scatter(x=x, y=y, line=dict(color="blue"), showlegend=True))
 
 
-def plot_policy_rollout_2d(gcs:PolynomialDualGCS, layers:T.List[T.List[DualVertex]], m:int, vertex:DualVertex, layer_index:int, fig:go.Figure, point:npt.NDArray):
-    _, vertex_trajectory, trajectory = rollout_m_step_policy(gcs, layers, m, vertex, point, layer_index)
+def plot_policy_rollout_2d(
+    gcs: PolynomialDualGCS,
+    layers: T.List[T.List[DualVertex]],
+    m: int,
+    vertex: DualVertex,
+    layer_index: int,
+    fig: go.Figure,
+    point: npt.NDArray,
+):
+    _, vertex_trajectory, trajectory = rollout_m_step_policy(
+        gcs, layers, m, vertex, point, layer_index
+    )
     vertex_trajectory = [vertex] + vertex_trajectory
     trajectory = [point] + trajectory
 
-    x,y = [],[]
+    x, y = [], []
     n = len(vertex_trajectory)
     # print("trajectory: ", trajectory)
     for i in range(n):
         point = trajectory[i]
-        x.append(point[0]) 
+        x.append(point[0])
         y.append(point[1])
 
     fig.add_trace(go.Scatter(x=x, y=y, line=dict(color="blue"), showlegend=True))
-    
