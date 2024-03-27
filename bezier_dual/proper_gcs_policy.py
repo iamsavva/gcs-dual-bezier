@@ -264,6 +264,9 @@ def get_k_step_optimal_path(
     options: ProgramOptions = None,
     already_visited: T.List[DualVertex] = [],
 ) -> T.Tuple[float, T.List[T.List[npt.NDArray]], T.List[DualVertex]]:
+    """
+
+    """
     actual_cost = vertex.cost_at_point(state, gcs.value_function_solution)
     if options is None:
         options = gcs.options
@@ -309,14 +312,19 @@ def rollout_the_policy(
     last_state: npt.NDArray = None,
     options: ProgramOptions = None,
 ) -> T.List[T.List[npt.NDArray]]:
+    """
+    K-step lookahead rollout policy.
+    Returns a list of bezier curves. Each bezier curve is a list of control points (numpy arrays).
+    """
     if options is None:
         options = gcs.options
     vertex_now, state_now, state_last = vertex, state, last_state
 
-    full_path = []
-    vertex_path_so_far = [vertex_now]
+    full_path = [] # type: T.List[T.List[npt.NDarray]]
+    vertex_path_so_far = [vertex_now] # type: T.List[DualVertex]
 
     while not vertex_now.vertex_is_target:
+        # use a k-step lookahead to obtain optimal k-step lookahead path
         _, bezier_path, vertex_path = get_k_step_optimal_path(
             gcs,
             vertex_now,
@@ -325,6 +333,10 @@ def rollout_the_policy(
             options,
             already_visited=vertex_path_so_far,
         )
+        if bezier_path is None:
+            WARN("k-step optimal path couldn't find a solution")
+            return None
+        # take just the first action from that path, then repeat
         first_segment = bezier_path[0]
         full_path.append(first_segment)
         vertex_now, state_now, state_last = (
@@ -334,7 +346,7 @@ def rollout_the_policy(
         )
         vertex_path_so_far.append(vertex_now)
 
-    # solve a convex restriction on the mode sequence
+    # solve a convex restriction on the vertex sequence
     if options.postprocess_by_solving_restrction_on_mode_sequence:
         _, full_path = solve_convex_restriction(
             gcs, vertex_path_so_far, state, last_state, options
@@ -353,10 +365,12 @@ def plot_optimal_and_rollout(
     plot_optimal=True,
     optimal_lookahead=10,
     rollout_color="red",
-) -> None:
+) -> bool:
     options = gcs.options
     options.policy_lookahead = lookahead
     rollout_path = rollout_the_policy(gcs, vertex, state, last_state, options)
+    if rollout_path is None:
+        return False
     plot_bezier(fig, rollout_path, rollout_color, rollout_color, name="rollout")
 
     # options.policy_add_G_term=True
@@ -369,3 +383,4 @@ def plot_optimal_and_rollout(
             gcs, vertex, state, last_state, options
         )
         plot_bezier(fig, optimal_path, "blue", "blue", name="optimal")
+    return True
