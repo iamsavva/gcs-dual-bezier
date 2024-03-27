@@ -101,7 +101,7 @@ class DualVertex:
         cheb_success, _, r = ChebyshevCenter(hpoly)
         assert cheb_success and (r > 1e-5), "vertex set is low dimensional"
     
-    def get_hpoly(self):
+    def get_hpoly(self)->HPolyhedron:
         assert self.set_type in (HPolyhedron, Hyperrectangle), "can't get hpoly for set"
         if self.set_type == HPolyhedron:
             return self.convex_set
