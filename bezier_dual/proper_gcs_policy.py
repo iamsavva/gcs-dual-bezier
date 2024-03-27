@@ -159,6 +159,7 @@ def solve_convex_restriction(
     state_now: npt.NDArray,
     state_last: npt.NDArray = None,
     options: ProgramOptions = None,
+    verbose_failure=False,
 ) -> T.Tuple[float, T.List[T.List[npt.NDArray]]]:
     """
     solve a convex restriction over a vertex path
@@ -220,6 +221,7 @@ def solve_convex_restriction(
                 else:
                     # inside the vertex
                     prog.AddLinearConstraint(ge(vertex.B.dot(np.hstack(([1], x_j))), 0))
+
                 # quadratic cost with previous point
                 prog.AddQuadraticCost(edge.cost_function(last_x, x_j))
 
@@ -240,9 +242,12 @@ def solve_convex_restriction(
     solution = Solve(prog)
     if solution.is_success():
         optimization_cost = solution.get_optimal_cost()
-        bezier_solutions = [solution.GetSolution(bezier_curve) for bezier_curve in bezier_curves]
+        # bezier_solutions = [solution.GetSolution(bezier_curve) for bezier_curve in bezier_curves]
+        bezier_solutions = [[solution.GetSolution(control_point) for control_point in bezier_curve] for bezier_curve in bezier_curves]
         return optimization_cost, bezier_solutions
     else:
+        if verbose_failure:
+            diditwork(solution)
         return np.inf, []
 
 
@@ -296,8 +301,8 @@ def get_path_cost(
 def lookahead_rollout_policy(
     gcs: PolynomialDualGCS,
     vertex: DualVertex,
-    state: npt.NDArray,
-    last_state: npt.NDArray = None,
+    initial_state: npt.NDArray,
+    initial_previous_state: npt.NDArray = None,
     options: ProgramOptions = None,
 ) -> T.List[T.List[npt.NDArray]]:
     """
@@ -306,7 +311,7 @@ def lookahead_rollout_policy(
     """
     if options is None:
         options = gcs.options
-    vertex_now, state_now, state_last = vertex, state, last_state
+    vertex_now, state_now, state_last = vertex, initial_state, initial_previous_state
 
     full_path = []  # type: T.List[T.List[npt.NDarray]]
     vertex_path_so_far = [vertex_now]  # type: T.List[DualVertex]
@@ -339,7 +344,7 @@ def lookahead_rollout_policy(
 
     # solve a convex restriction on the vertex sequence
     if options.postprocess_by_solving_restrction_on_mode_sequence:
-        _, full_path = solve_convex_restriction(gcs, vertex_path_so_far, state, last_state, options)
+        _, full_path = solve_convex_restriction(gcs, vertex_path_so_far, initial_state, initial_previous_state, options)
         # verbose
         if options.verbose_restriction_improvement:
             cost_after = get_path_cost(gcs, vertex_path_so_far, full_path)
@@ -356,131 +361,100 @@ def lookahead_rollout_policy(
     return full_path
 
 
-# def lookahead_rollout_with_backtracking_policy(
-#     gcs: PolynomialDualGCS,
-#     vertex: DualVertex,
-#     state: npt.NDArray,
-#     last_state: npt.NDArray = None,
-#     options: ProgramOptions = None,
-# ) -> T.List[T.List[npt.NDArray]]:
-#     """
-#     K-step lookahead rollout policy.
-#     If you reach a point from which no action is available --
-#     -- backtrack to the last state when some action was available.
-#     Returns a list of bezier curves. Each bezier curve is a list of control points (numpy arrays).
-#     """
-#     if options is None:
-#         options = gcs.options
+def lookahead_rollout_with_backtracking_policy(
+    gcs: PolynomialDualGCS,
+    vertex: DualVertex,
+    initial_state: npt.NDArray,
+    initial_previous_state: npt.NDArray = None,
+    options: ProgramOptions = None,
+) -> T.List[T.List[npt.NDArray]]:
+    """
+    K-step lookahead rollout policy.
+    If you reach a point from which no action is available --
+    -- backtrack to the last state when some action was available.
+    Returns a list of bezier curves. Each bezier curve is a list of control points (numpy arrays).
+    """
+    if options is None:
+        options = gcs.options
 
-#     class Node:
-#         def __init__(self, vertex_now, state_now, state_last, bezier_path_so_far, vertex_path_so_far):
-#             self.vertex_now = vertex_now
-#             self.state_now = state_now
-#             self.state_last = state_last
-#             self.bezier_path_so_far = bezier_path_so_far
-#             self.vertex_path_so_far = vertex_path_so_far
+    class Node:
+        def __init__(self, vertex_now: DualVertex, state_now:npt.NDArray, state_last:npt.NDArray, bezier_path_so_far:T.List[T.List[npt.NDArray]], vertex_path_so_far:T.List[DualVertex]):
+            self.vertex_now = vertex_now
+            self.state_now = state_now
+            self.state_last = state_last
+            self.bezier_path_so_far = bezier_path_so_far
+            self.vertex_path_so_far = vertex_path_so_far
 
-#     # cost, current state, last state, current vertex, state path so far, vertex path so far
-#     decision_options = [ PriorityQueue() ]
-#     decision_options[0].put( (0, Node(vertex, state, last_state, [], [vertex])) )
-
-
-#     decision_index = 0
-#     found_target = False
-
-#     while not found_target:
-#         if decision_index == -1:
-#             return None
-#         if decision_options[decision_index].empty():
-#             decision_index -= 1
-#         else:
-#             node = decision_options[decision_index].get()
-
-#             if options is None:
-#         options = gcs.options
-#         if options.policy_no_vertex_revisits:
-#             vertex_paths = get_all_n_step_paths_no_revisits(
-#                 gcs, options.policy_lookahead, vertex, already_visited
-#             )
-#         else:
-#             vertex_paths = get_all_n_step_paths(gcs, options.policy_lookahead, vertex)
-#         best_cost, best_path, best_vertex_path = np.inf, None, None
-#         for vertex_path in vertex_paths:
-#             cost, bezier_curves = solve_convex_restriction(
-#                 gcs, vertex_path, state, last_state, options
-#             )
-#             if options.policy_verbose_choices:
-#                 print([v.name for v in vertex_path], cost)
-#             if options.policy_min_cost:
-#                 if cost < best_cost:
-#                     best_cost, best_path, best_vertex_path = (
-#                         cost,
-#                         bezier_curves,
-#                         vertex_path,
-#                     )
-#             else:
-#                 if np.abs(cost - actual_cost) < np.abs(best_cost - actual_cost):
-#                     best_cost, best_path, best_vertex_path = (
-#                         cost,
-#                         bezier_curves,
-#                         vertex_path,
-#                     )
-#         if options.policy_verbose_choices:
-#             print("----")
-#         return best_cost, best_path, best_vertex_path
+        def extend(self, next_bezier_curve: T.List[npt.NDArray], next_vertex: DualVertex):
+            vertex_now = next_vertex
+            state_now = next_bezier_curve[-1]
+            state_last = next_bezier_curve[-2]
+            bezier_path_so_far = self.bezier_path_so_far + [next_bezier_curve]
+            vertex_path_so_far = self.vertex_path_so_far + [next_vertex]
+            return Node(vertex_now, state_now, state_last, bezier_path_so_far, vertex_path_so_far)
 
 
-#         # make a decision at current layer
-#         # if there are no decisions -- go back 1 layer
-#         # if there are decisions -- remove that decision from list of available decisions (pick best)
-#         # enumerate all possible next decisions, populate the list repsectively
+    # cost, current state, last state, current vertex, state path so far, vertex path so far
+    decision_options = [ PriorityQueue() ]
+    decision_options[0].put( (0, Node(vertex, initial_state, initial_previous_state, [], [vertex])) )
 
-#     while not vertex_now.vertex_is_target:
-#         # use a k-step lookahead to obtain optimal k-step lookahead path
-#         _, bezier_path, vertex_path = get_k_step_optimal_path(
-#             gcs,
-#             vertex_now,
-#             state_now,
-#             state_last,
-#             options,
-#             already_visited=vertex_path_so_far,
-#         )
-#         if bezier_path is None:
-#             WARN("k-step optimal path couldn't find a solution")
-#             return None
-#         # take just the first action from that path, then repeat
-#         first_segment = bezier_path[0]
-#         full_path.append(first_segment)
-#         vertex_now, state_now, state_last = (
-#             vertex_path[1],
-#             first_segment[-1],
-#             first_segment[-2],
-#         )
-#         vertex_path_so_far.append(vertex_now)
 
-#     if options.verbose_restriction_improvement:
-#         cost_before = get_path_cost(gcs, vertex_path_so_far, full_path)
+    decision_index = 0
+    found_target = False
+    final_node = None
 
-#     # solve a convex restriction on the vertex sequence
-#     if options.postprocess_by_solving_restrction_on_mode_sequence:
-#         _, full_path = solve_convex_restriction(
-#             gcs, vertex_path_so_far, state, last_state, options
-#         )
-#         # verbose
-#         if options.verbose_restriction_improvement:
-#             cost_after = get_path_cost(gcs, vertex_path_so_far, full_path)
-#             INFO(
-#                 "path cost improved from",
-#                 np.round(cost_before, 1),
-#                 "to",
-#                 np.round(cost_after, 1),
-#                 "; original is",
-#                 np.round((cost_before / cost_after - 1) * 100, 1),
-#                 "% worse",
-#             )
+    while not found_target:
+        if decision_index == -1:
+            return None
+        if decision_options[decision_index].empty():
+            decision_index -= 1
+        else:
+            node = decision_options[decision_index].get()[1] # type: Node
+            if node.vertex_now.vertex_is_target:
+                found_target = True
+                final_node = node
+                break
 
-#     return full_path
+            if len(decision_options) == decision_index + 1:
+                decision_options.append( PriorityQueue() )
 
+            vertex_paths = get_all_n_step_paths_no_revisits(
+                gcs, options.policy_lookahead, node.vertex_now, node.vertex_path_so_far
+            )
+            # for every path -- solve convex restriction, add next states
+            for vertex_path in vertex_paths:
+                cost, bezier_curves = solve_convex_restriction(gcs, vertex_path, node.state_now, node.state_last, options)
+                if np.isfinite(cost):
+                    next_node = node.extend(bezier_curves[0], vertex_path[1])
+                    decision_options[decision_index + 1].put( (cost, next_node ))
+            decision_index += 1
+
+    if found_target:
+        if options.verbose_restriction_improvement:
+            cost_before = get_path_cost(gcs, final_node.vertex_path_so_far, final_node.bezier_path_so_far)
+
+        full_path = final_node.bezier_path_so_far
+        # solve a convex restriction on the vertex sequence
+        if options.postprocess_by_solving_restrction_on_mode_sequence:
+            _, full_path = solve_convex_restriction(gcs, final_node.vertex_path_so_far, initial_state, initial_previous_state, options)
+            # verbose
+            if options.verbose_restriction_improvement:
+                cost_after = get_path_cost(gcs, final_node.vertex_path_so_far, full_path)
+                INFO(
+                    "path cost improved from",
+                    np.round(cost_before, 1),
+                    "to",
+                    np.round(cost_after, 1),
+                    "; original is",
+                    np.round((cost_before / cost_after - 1) * 100, 1),
+                    "% worse",
+                )
+        return full_path
+        
+    else:
+        WARN("no path from start vertex to target!")
+        return None
+           
 
 def plot_optimal_and_rollout(
     fig: go.Figure,
@@ -495,9 +469,16 @@ def plot_optimal_and_rollout(
 ) -> bool:
     options = gcs.options
     options.policy_lookahead = lookahead
-    rollout_path = lookahead_rollout_policy(gcs, vertex, state, last_state, options)
+    options.vertify_options_validity()
+
+    if options.use_lookahead_rollout_policy:
+        rollout_path = lookahead_rollout_policy(gcs, vertex, state, last_state, options)
+    elif options.use_lookahead_rollout_with_backtracking_policy:
+        rollout_path = lookahead_rollout_with_backtracking_policy(gcs, vertex, state, last_state, options)
+
     if rollout_path is None:
         return False
+    
     plot_bezier(fig, rollout_path, rollout_color, rollout_color, name="rollout")
 
     # options.policy_add_G_term=True

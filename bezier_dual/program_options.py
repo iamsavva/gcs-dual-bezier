@@ -52,7 +52,13 @@ class ProgramOptions:
         self.postprocess_by_solving_restrction_on_mode_sequence = True
         self.verbose_restriction_improvement = False
 
-    def test_options(self):
+        # ---
+
+        self.use_lookahead_rollout_policy = False
+        self.use_lookahead_rollout_with_backtracking_policy = False
+        self.use_cheap_a_star = False
+
+    def vertify_options_validity(self):
         assert (
             self.num_control_points >= 3
         ), "need at least 1 control point in the interior, 3 total"
@@ -61,4 +67,8 @@ class ProgramOptions:
             FREE_POLY,
             PSD_POLY,
             CONVEX_POLY,
-        ), "undefined potential"
+        ), "undefined potentia type"
+        policy_options = np.array([self.use_lookahead_rollout_policy, self.use_lookahead_rollout_with_backtracking_policy, self.use_cheap_a_star])
+        assert not np.sum(policy_options) < 1, "must select policy lookahead option"
+        assert not np.sum(policy_options) > 1, "selected multiple policy lookahead options"
+
