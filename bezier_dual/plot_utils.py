@@ -102,6 +102,7 @@ def plot_bezier(
     bezier_color="purple",
     control_point_color="red",
     name=None,
+    linewidth=3,
 ):
     showlegend = False
     line_name = ""
@@ -149,6 +150,7 @@ def plot_bezier(
             x=full_path[:, 0],
             y=full_path[:, 1],
             marker_color=bezier_color,
+            line=dict(width=linewidth),
             mode="lines",
             name=line_name,
             showlegend=showlegend,
@@ -400,6 +402,7 @@ def plot_policy_rollout_2d(
     layer_index: int,
     fig: go.Figure,
     point: npt.NDArray,
+    linewidth=3,
 ):
     _, vertex_trajectory, trajectory = rollout_m_step_policy(
         gcs, layers, m, vertex, point, layer_index
@@ -415,4 +418,4 @@ def plot_policy_rollout_2d(
         x.append(point[0])
         y.append(point[1])
 
-    fig.add_trace(go.Scatter(x=x, y=y, line=dict(color="blue"), showlegend=True))
+    fig.add_trace(go.Scatter(x=x, y=y, line=dict(color="blue", width=linewidth), showlegend=True))

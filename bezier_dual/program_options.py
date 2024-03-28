@@ -49,7 +49,7 @@ class ProgramOptions:
 
         self.policy_verbose_choices = False
 
-        self.postprocess_by_solving_restrction_on_mode_sequence = True
+        self.postprocess_by_solving_restriction_on_mode_sequence = True
         self.verbose_restriction_improvement = False
 
         # ---
@@ -57,6 +57,8 @@ class ProgramOptions:
         self.use_lookahead_policy = False
         self.use_lookahead_with_backtracking_policy = False
         self.use_cheap_a_star_policy = False
+
+        self.policy_use_zero_heuristic_instead_of_potential = False
 
     def vertify_options_validity(self):
         assert (

@@ -182,11 +182,12 @@ def solve_convex_restriction(
     for i, vertex in enumerate(vertex_path):
         # it's the last vertex -- don't add a bezier curve; add terminal cost
         if i == len(vertex_path) - 1:
-            potential = graph.value_function_solution.GetSolution(vertex.potential)
-            f_potential = lambda x: potential.Substitute(
-                {vertex.x[i]: x[i] for i in range(vertex.state_dim)}
-            )
-            prog.AddCost(f_potential(last_x))
+            if not options.policy_use_zero_heuristic_instead_of_potential:
+                potential = graph.value_function_solution.GetSolution(vertex.potential)
+                f_potential = lambda x: potential.Substitute(
+                    {vertex.x[i]: x[i] for i in range(vertex.state_dim)}
+                )
+                prog.AddCost(f_potential(last_x))
 
             # NOTE: UNCOMMENT THIS FOR SMOOTH TRAJECTORIES
             # assert that next point is feasible
@@ -343,7 +344,7 @@ def lookahead_policy(
         cost_before = get_path_cost(gcs, vertex_path_so_far, full_path)
 
     # solve a convex restriction on the vertex sequence
-    if options.postprocess_by_solving_restrction_on_mode_sequence:
+    if options.postprocess_by_solving_restriction_on_mode_sequence:
         _, full_path = solve_convex_restriction(gcs, vertex_path_so_far, initial_state, initial_previous_state, options)
         # verbose
         if options.verbose_restriction_improvement:
@@ -435,7 +436,7 @@ def lookahead_with_backtracking_policy(
 
         full_path = target_node.bezier_path_so_far
         # solve a convex restriction on the vertex sequence
-        if options.postprocess_by_solving_restrction_on_mode_sequence:
+        if options.postprocess_by_solving_restriction_on_mode_sequence:
             _, full_path = solve_convex_restriction(gcs, target_node.vertex_path_so_far, initial_state, initial_previous_state, options)
             # verbose
             if options.verbose_restriction_improvement:
@@ -509,7 +510,7 @@ def cheap_a_star_policy(
 
         full_path = target_node.bezier_path_so_far
         # solve a convex restriction on the vertex sequence
-        if options.postprocess_by_solving_restrction_on_mode_sequence:
+        if options.postprocess_by_solving_restriction_on_mode_sequence:
             _, full_path = solve_convex_restriction(gcs, target_node.vertex_path_so_far, initial_state, initial_previous_state, options)
             # verbose
             if options.verbose_restriction_improvement:
@@ -540,22 +541,30 @@ def plot_optimal_and_rollout(
     plot_optimal=True,
     optimal_lookahead=10,
     rollout_color="red",
-) -> bool:
+    optimal_color="blue",
+    plot_control_points=True,
+    linewidth=3,
+) -> T.Tuple[bool, float]:
     options = gcs.options
     options.policy_lookahead = lookahead
     options.vertify_options_validity()
 
+    timer = timeit()
     if options.use_lookahead_policy:
         rollout_path = lookahead_policy(gcs, vertex, state, last_state, options)
     elif options.use_lookahead_with_backtracking_policy:
         rollout_path = lookahead_with_backtracking_policy(gcs, vertex, state, last_state, options)
     elif options.use_cheap_a_star_policy:
         rollout_path = cheap_a_star_policy(gcs, vertex, state, last_state, options)
+    dt = timer.dt(print_stuff = False)
 
     if rollout_path is None:
-        return False
+        return False, dt
     
-    plot_bezier(fig, rollout_path, rollout_color, rollout_color, name="rollout")
+    if plot_control_points:
+        plot_bezier(fig, rollout_path, rollout_color, rollout_color, name="rollout", linewidth=linewidth)
+    else:
+        plot_bezier(fig, rollout_path, rollout_color, None, name="rollout",linewidth=linewidth)
 
     # options.policy_add_G_term=True
     # rollout_path_with_G = rollout_the_policy(gcs, vertex, state, last_state, options)
@@ -564,5 +573,8 @@ def plot_optimal_and_rollout(
     if plot_optimal:
         options.policy_lookahead = optimal_lookahead
         _, optimal_path, _ = get_k_step_optimal_path(gcs, vertex, state, last_state, options)
-        plot_bezier(fig, optimal_path, "blue", "blue", name="optimal")
-    return True
+        if plot_control_points:
+            plot_bezier(fig, optimal_path, optimal_color, optimal_color, name="optimal",linewidth=linewidth)
+        else:
+            plot_bezier(fig, optimal_path, optimal_color, None, name="optimal",linewidth=linewidth)
+    return True, dt
