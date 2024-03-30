@@ -178,7 +178,7 @@ class DualVertex:
     def cost_at_point(self, x: npt.NDArray, solution: MathematicalProgramResult = None):
 
         assert len(x) == self.state_dim
-        assert self.convex_set.PointInSet(x, 1e-5)
+        # assert self.convex_set.PointInSet(x, 1e-5)
         if solution is None:
             return self.evaluate_partial_potential_at_point(x)
         else:

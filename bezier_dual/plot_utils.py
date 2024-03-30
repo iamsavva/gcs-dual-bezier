@@ -31,11 +31,11 @@ from pydrake.symbolic import (  # pylint: disable=import-error, no-name-in-modul
     Variables,
     Expression,
 )
-from pydrake.math import (
+from pydrake.math import ( # pylint: disable=import-error, no-name-in-module, unused-import
     ge,
     eq,
     le,
-)  # pylint: disable=import-error, no-name-in-module, unused-import
+)  
 
 import plotly.graph_objects as go  # pylint: disable=import-error
 from plotly.express.colors import sample_colorscale  # pylint: disable=import-error

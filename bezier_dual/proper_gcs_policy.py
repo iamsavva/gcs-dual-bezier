@@ -8,8 +8,11 @@ from pydrake.solvers import (  # pylint: disable=import-error, no-name-in-module
     MathematicalProgramResult,
     Solve,
     MosekSolver,
+    GurobiSolver,
     MosekSolverDetails,
     SnoptSolver,
+    OsqpSolver,
+    ClarabelSolver,
     IpoptSolver,
     SolverOptions,
     CommonSolverOption,
@@ -240,7 +243,23 @@ def solve_convex_restriction(
             # if i == len(vertex_path)-2:
             #     prog.AddCost(graph.value_function_solution.GetSolution(edge.bidirectional_edge_violation))
 
-    solution = Solve(prog)
+    if options.solve_with_snopt:
+        solver = SnoptSolver()
+        solution = solver.Solve(prog)
+    elif options.solve_with_mosek:
+        solver = MosekSolver()
+        solution = solver.Solve(prog)
+    elif options.solve_with_gurobi:
+        solver = GurobiSolver()
+        solution = solver.Solve(prog)
+    elif options.solve_with_osqp:
+        solver = OsqpSolver()
+        solution = solver.Solve(prog)
+    elif options.solve_with_clarabel:
+        solver = ClarabelSolver()
+        solution = solver.Solve(prog)
+    else:
+        solution = Solve(prog)
     if solution.is_success():
         optimization_cost = solution.get_optimal_cost()
         # bezier_solutions = [solution.GetSolution(bezier_curve) for bezier_curve in bezier_curves]
@@ -312,6 +331,7 @@ def lookahead_policy(
     """
     if options is None:
         options = gcs.options
+    options.vertify_options_validity()
     vertex_now, state_now, state_last = vertex, initial_state, initial_previous_state
 
     full_path = []  # type: T.List[T.List[npt.NDarray]]
@@ -394,10 +414,12 @@ def lookahead_with_backtracking_policy(
     """
     if options is None:
         options = gcs.options
+    options.vertify_options_validity()
 
     # cost, current state, last state, current vertex, state path so far, vertex path so far
     decision_options = [ PriorityQueue() ]
     decision_options[0].put( (0, Node(vertex, initial_state, initial_previous_state, [], [vertex])) )
+    num_times_solved_convex_restriction = 0
 
 
     decision_index = 0
@@ -425,10 +447,14 @@ def lookahead_with_backtracking_policy(
             # for every path -- solve convex restriction, add next states
             for vertex_path in vertex_paths:
                 cost, bezier_curves = solve_convex_restriction(gcs, vertex_path, node.state_now, node.state_last, options)
+                num_times_solved_convex_restriction += 1
                 if np.isfinite(cost):
                     next_node = node.extend(bezier_curves[0], vertex_path[1])
                     decision_options[decision_index + 1].put( (cost, next_node ))
             decision_index += 1
+
+    if options.policy_verbose_number_of_restrictions_solves:
+        INFO("solved the convex restriction", num_times_solved_convex_restriction, "of times")
 
     if found_target:
         if options.verbose_restriction_improvement:
@@ -472,10 +498,12 @@ def cheap_a_star_policy(
     """
     if options is None:
         options = gcs.options
+    options.vertify_options_validity()
 
     # cost, current state, last state, current vertex, state path so far, vertex path so far
     que = PriorityQueue()
     que.put( (0.0, Node(vertex, initial_state, initial_previous_state, [], [vertex]) ) )
+    num_times_solved_convex_restriction = 0
 
 
     found_target = False
@@ -495,6 +523,7 @@ def cheap_a_star_policy(
             # for every path -- solve convex restriction, add next states
             for vertex_path in vertex_paths:
                 cost, bezier_curves = solve_convex_restriction(gcs, vertex_path, node.state_now, node.state_last, options)
+                num_times_solved_convex_restriction += 1
                 # check if solution exists
                 if np.isfinite(cost):
                     next_node = node.extend(bezier_curves[0], vertex_path[1])
@@ -502,6 +531,9 @@ def cheap_a_star_policy(
                     cost_of_path = get_path_cost(gcs, next_node.vertex_path_so_far, next_node.bezier_path_so_far)
                     estimate_of_remainder = next_node.vertex_now.cost_at_point(next_node.state_now, gcs.value_function_solution)
                     que.put( (cost_of_path+estimate_of_remainder, next_node) )
+
+    if options.policy_verbose_number_of_restrictions_solves:
+        INFO("solved the convex restriction", num_times_solved_convex_restriction, "of times")
 
 
     if found_target:
