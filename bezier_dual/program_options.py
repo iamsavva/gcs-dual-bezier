@@ -60,6 +60,7 @@ class ProgramOptions:
         self.use_cheap_a_star_policy = False
 
         self.policy_use_zero_heuristic_instead_of_potential = False
+        self.add_edge_vertex_violations_in_calculating_cost_so_far = False
 
         # solve with default otherwise
         self.solve_with_gurobi = False

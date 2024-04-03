@@ -132,8 +132,12 @@ class DualVertex:
         self.vars = Variables(self.x)
 
         self.total_flow_in_violation = prog.NewContinuousVariables(1)[0]
-        prog.AddLinearConstraint(self.total_flow_in_violation >= 0)
-        prog.AddLinearCost(self.total_flow_in_violation * self.options.max_flow_through_edge)
+    
+        if not self.vertex_is_target:
+            prog.AddLinearConstraint(self.total_flow_in_violation >= 0)
+            prog.AddLinearCost(self.total_flow_in_violation * self.options.max_flow_through_edge)
+        else:
+            prog.AddLinearConstraint(self.total_flow_in_violation == 0)
 
     def define_set_inequalities(self):
         """

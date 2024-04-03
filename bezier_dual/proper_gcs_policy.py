@@ -308,6 +308,9 @@ def get_path_cost(
     vertex_path: T.List[DualVertex],
     bezier_path: T.List[T.List[npt.NDArray]],
 ) -> float:
+    """
+    Note: this is cost of the full path with the terminal cost
+    """
     cost = 0.0
     for index, bezier_curve in enumerate(bezier_path):
         edge = graph.edges[get_edge_name(vertex_path[index].name, vertex_path[index + 1].name)]
@@ -315,6 +318,28 @@ def get_path_cost(
             cost += edge.cost_function(bezier_curve[i], bezier_curve[i + 1])
         if index == len(bezier_path) - 1:
             cost += vertex_path[-1].cost_at_point(bezier_curve[-1], graph.value_function_solution)
+    return cost
+
+
+def get_edge_cost_and_edge_vertex_violations_cost(
+    graph: PolynomialDualGCS,
+    vertex_path: T.List[DualVertex],
+    bezier_path: T.List[T.List[npt.NDArray]],
+) -> float:
+    """
+    this is used to approximate the cost of the path incurred so far
+    """
+    cost = 0.0
+    for index, bezier_curve in enumerate(bezier_path):
+        edge = graph.edges[get_edge_name(vertex_path[index].name, vertex_path[index + 1].name)]
+        for i in range(len(bezier_curve) - 1):
+            cost += edge.cost_function(bezier_curve[i], bezier_curve[i + 1])
+        if (not graph.options.policy_use_zero_heuristic_instead_of_potential 
+            and graph.options.add_edge_vertex_violations_in_calculating_cost_so_far):
+            violations = graph.value_function_solution.GetSolution(edge.bidirectional_edge_violation) + graph.value_function_solution.GetSolution(edge.right.total_flow_in_violation)
+            if isinstance(violations, Expression):
+                violations = violations.Evaluate()
+            cost += violations
     return cost
 
 
@@ -391,12 +416,13 @@ class Node:
         self.vertex_path_so_far = vertex_path_so_far
 
     def extend(self, next_bezier_curve: T.List[npt.NDArray], next_vertex: DualVertex):
-        vertex_now = next_vertex
-        state_now = next_bezier_curve[-1]
-        state_last = next_bezier_curve[-2]
-        bezier_path_so_far = self.bezier_path_so_far + [next_bezier_curve]
-        vertex_path_so_far = self.vertex_path_so_far + [next_vertex]
-        return Node(vertex_now, state_now, state_last, bezier_path_so_far, vertex_path_so_far)
+        return Node(next_vertex, 
+                    next_bezier_curve[-1], 
+                    next_bezier_curve[-2], 
+                    self.bezier_path_so_far + [next_bezier_curve], 
+                    self.vertex_path_so_far + [next_vertex]
+                    )
+
 
 
 def lookahead_with_backtracking_policy(
@@ -527,9 +553,14 @@ def cheap_a_star_policy(
                 # check if solution exists
                 if np.isfinite(cost):
                     next_node = node.extend(bezier_curves[0], vertex_path[1])
+
                     # evaluate the cost
-                    cost_of_path = get_path_cost(gcs, next_node.vertex_path_so_far, next_node.bezier_path_so_far)
-                    estimate_of_remainder = next_node.vertex_now.cost_at_point(next_node.state_now, gcs.value_function_solution)
+                    cost_of_path = get_edge_cost_and_edge_vertex_violations_cost(gcs, next_node.vertex_path_so_far, next_node.bezier_path_so_far)
+
+                    if options.policy_use_zero_heuristic_instead_of_potential:
+                        estimate_of_remainder = 0.0
+                    else:
+                        estimate_of_remainder = next_node.vertex_now.cost_at_point(next_node.state_now, gcs.value_function_solution)
                     que.put( (cost_of_path+estimate_of_remainder, next_node) )
 
     if options.policy_verbose_number_of_restrictions_solves:
@@ -578,6 +609,7 @@ def plot_optimal_and_rollout(
     linewidth=3,
 ) -> T.Tuple[bool, float]:
     options = gcs.options
+    gcs.options.policy_lookahead = lookahead
     options.policy_lookahead = lookahead
     options.vertify_options_validity()
 
