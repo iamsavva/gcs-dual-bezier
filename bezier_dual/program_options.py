@@ -42,10 +42,11 @@ class ProgramOptions:
         # parameters specific to bezier
         self.num_control_points = 3
         self.policy_add_G_term = False
-        # self.policy_no_vertex_revisits = True # depricated
-        # self.policy_min_cost = True # depricated
 
-        self.policy_add_total_flow_in_violation_penalty = False
+
+        # this should be added automatically if i use corresponding constraints on dual
+        self.policy_add_violation_penalties = False # this doesn't seem to help
+        
 
         self.policy_verbose_choices = False
         self.policy_verbose_number_of_restrictions_solves = False
@@ -59,8 +60,7 @@ class ProgramOptions:
         self.use_lookahead_with_backtracking_policy = False
         self.use_cheap_a_star_policy = False
 
-        self.policy_use_zero_heuristic_instead_of_potential = False
-        self.add_edge_vertex_violations_in_calculating_cost_so_far = False
+        self.policy_use_zero_heuristic = False
 
         # solve with default otherwise
         self.solve_with_gurobi = False
