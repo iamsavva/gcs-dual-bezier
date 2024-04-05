@@ -181,3 +181,19 @@ def have_full_dimensional_intersection(hpoly1: HPolyhedron, hpoly2: HPolyhedron)
     intersection = hpoly1.Intersection(hpoly2)
     inward_intersection = offset_hpoly_inwards(intersection)
     return not inward_intersection.IsEmpty()
+
+
+def make_polyhedral_set_for_bezier_curve(hpoly:HPolyhedron, num_control_points:int) -> HPolyhedron:
+    A,b = hpoly.A(), hpoly.b()
+    m,n = A.shape
+    k = num_control_points
+    bigA = np.zeros( (k*m, k*n) )
+    bigb = np.zeros( k*m )
+    for i in range(k):
+        bigA[ m*i: m*(i+1), n*i: n*(i+1) ] = A
+        bigb[ m*i: m*(i+1) ] = b
+    return HPolyhedron(bigA, bigb)
+
+def get_kth_control_point(bezier:npt.NDArray, k:int, num_control_points:int) -> npt.NDArray:
+    state_dim = len(bezier)//num_control_points
+    return bezier[ k*state_dim:(k+1)*state_dim ]

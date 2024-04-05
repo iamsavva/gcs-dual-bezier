@@ -69,6 +69,12 @@ class ProgramOptions:
         self.solve_with_clarabel = False
         self.solve_with_osqp = False
 
+
+        # ----------------------------------
+        self.gcs_policy_use_convex_relaxation = False
+        self.gcs_policy_max_rounding_trials = 30
+        self.gcs_policy_use_preprocessing = True
+
     def vertify_options_validity(self):
         assert (
             self.num_control_points >= 3

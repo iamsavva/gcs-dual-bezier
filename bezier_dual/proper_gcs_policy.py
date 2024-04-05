@@ -58,9 +58,10 @@ from util import (
     WARN,
     ERROR,
     ChebyshevCenter,
+    get_kth_control_point
 )  # pylint: disable=import-error, no-name-in-module, unused-import
 
-from gcs_util import get_edge_name, make_quadratic_cost_function_matrices
+from gcs_util import get_edge_name, make_quadratic_cost_function_matrices, plot_a_gcs
 from polynomial_dual_gcs_utils import (
     define_quadratic_polynomial,
     define_sos_constraint_over_polyhedron,
@@ -151,6 +152,7 @@ def get_all_n_step_vertices_and_edges(
                     if lookahead > 1:
                         vertex_expand_que.append((right_vertex, lookahead - 1))
     return vertices, edges
+
 
 
 # ---------------------------------------------------------------------
@@ -282,6 +284,52 @@ def solve_convex_restriction(
 # ---
 
 
+def get_optimal_path(
+    gcs: PolynomialDualGCS,
+    vertex: DualVertex,
+    state: npt.NDArray,
+    options: ProgramOptions = None
+) -> T.Tuple[float, float, T.List[T.List[npt.NDArray]], T.List[DualVertex]]:
+    """
+    return (time, cost, bezier path, vertex path) of the optimal solution.
+    """
+    if options is None:
+        options = gcs.options
+
+    k = options.num_control_points
+    regular_gcs, vertices, terminal_vertex = gcs.export_a_gcs()
+    start_vertex = vertices[vertex.name]
+    first_point = get_kth_control_point(start_vertex.x(), 0, k)
+    cons = eq(first_point, state)
+    for con in cons:
+        start_vertex.AddConstraint( con )
+
+    gcs_options = GraphOfConvexSetsOptions()
+    gcs_options.convex_relaxation = options.gcs_policy_use_convex_relaxation
+    gcs_options.max_rounding_trials = options.gcs_policy_max_rounding_trials
+    gcs_options.preprocessing = options.gcs_policy_use_preprocessing
+
+    # solve
+    timer = timeit()
+    result = regular_gcs.SolveShortestPath(
+        start_vertex, terminal_vertex, gcs_options
+    )  # type: MathematicalProgramResult
+    dt = timer.dt()
+    assert result.is_success()
+    cost = result.get_optimal_cost()
+
+    edge_path = regular_gcs.GetSolutionPath(start_vertex, terminal_vertex, result)
+    vertex_name_path = [vertex.name]
+    value_path = []
+    for e in edge_path[:-1]:
+        vertex_name_path.append(e.u().name())
+        full_curve = result.GetSolution(e.u().x())
+        split_up_curve = full_curve.reshape( (k, vertex.state_dim) )
+        value_path.append([x for x in split_up_curve])
+        
+    return dt, cost, value_path, [gcs.vertices[name] for name in vertex_name_path[:-1]]
+
+
 def get_k_step_optimal_path(
     gcs: PolynomialDualGCS,
     vertex: DualVertex,
@@ -291,9 +339,7 @@ def get_k_step_optimal_path(
     already_visited: T.List[DualVertex] = [],
 ) -> T.Tuple[float, T.List[T.List[npt.NDArray]], T.List[DualVertex]]:
     """ 
-    this is a terrible idea
-    should just solve a GCS program to get optimal
-    TODO: remove this, implement a proper GCS synthesis
+    do not use this to compute optimal trajectories
     """
     if options is None:
         options = gcs.options
@@ -599,6 +645,7 @@ def plot_optimal_and_rollout(
     optimal_color:str="blue",
     plot_control_points:bool=True,
     linewidth:int=3,
+    verbose_time_comparison_to_optimal:bool = False
 ) -> T.Tuple[bool, float]:
     """
     rollout the policy from the initial condition, plot it out on a given figure`
@@ -626,13 +673,12 @@ def plot_optimal_and_rollout(
     else:
         plot_bezier(fig, rollout_path, rollout_color, None, name="rollout",linewidth=linewidth)
 
-    # options.policy_add_G_term=True
-    # rollout_path_with_G = rollout_the_policy(gcs, vertex, state, last_state, options)
-    # plot_bezier(fig, rollout_path_with_G, "purple", "purple", name="rollout with G")
-
     if plot_optimal:
         options.policy_lookahead = optimal_lookahead
-        _, optimal_path, _ = get_k_step_optimal_path(gcs, vertex, state, last_state, options)
+        optimal_dt, _, optimal_path, _ = get_optimal_path(gcs, vertex, state, options)
+        if verbose_time_comparison_to_optimal:
+            INFO("policy", dt)
+            INFO("GCS   ", optimal_dt)
         if plot_control_points:
             plot_bezier(fig, optimal_path, optimal_color, optimal_color, name="optimal",linewidth=linewidth)
         else:

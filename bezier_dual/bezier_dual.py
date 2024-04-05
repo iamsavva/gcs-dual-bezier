@@ -31,11 +31,11 @@ from pydrake.symbolic import (  # pylint: disable=import-error, no-name-in-modul
     Variables,
     Expression,
 )
-from pydrake.math import (
+from pydrake.math import ( # pylint: disable=import-error, no-name-in-module, unused-import
     ge,
     eq,
     le,
-)  # pylint: disable=import-error, no-name-in-module, unused-import
+)  
 
 import plotly.graph_objects as go  # pylint: disable=import-error
 from plotly.express.colors import sample_colorscale  # pylint: disable=import-error
@@ -52,6 +52,8 @@ from util import (
     WARN,
     ERROR,
     ChebyshevCenter,
+    make_polyhedral_set_for_bezier_curve,
+    get_kth_control_point
 )  # pylint: disable=import-error, no-name-in-module, unused-import
 
 from gcs_util import get_edge_name, make_quadratic_cost_function_matrices
@@ -176,8 +178,10 @@ class DualVertex:
         Needed when parameters are still optimizaiton variables
         """
         assert len(x) == self.state_dim
-        assert self.convex_set.PointInSet(x, 1e-5)  # evaluate only on set
-        return self.potential.EvaluatePartial({self.x[i]: x[i] for i in range(self.state_dim)})
+        # NOTE: do i care?
+        # assert self.convex_set.PointInSet(x, 1e-5)  # evaluate only on set
+        return self.potential.Substitute({self.x[i]: x[i] for i in range(self.state_dim)})
+        # return self.potential.EvaluatePartial({self.x[i]: x[i] for i in range(self.state_dim)})
 
     def cost_at_point(self, x: npt.NDArray, solution: MathematicalProgramResult = None):
 
@@ -187,7 +191,8 @@ class DualVertex:
             return self.evaluate_partial_potential_at_point(x)
         else:
             potential = solution.GetSolution(self.potential)
-            return potential.Evaluate({self.x[i]: x[i] for i in range(self.state_dim)})
+            return potential.Substitute({self.x[i]: x[i] for i in range(self.state_dim)}).Evaluate()
+            # return potential.Evaluate({self.x[i]: x[i] for i in range(self.state_dim)})
 
     def cost_of_uniform_integral_over_box(self, lb, ub, solution: MathematicalProgramResult = None):
         assert len(lb) == len(ub) == self.state_dim
@@ -343,9 +348,9 @@ class PolynomialDualGCS:
         self,
         name: str,
         convex_set: ConvexSet,
-        options=None,
+        options:ProgramOptions=None,
         vertex_is_start: bool = False,
-    ):
+    )->DualVertex:
         """
         Options will default to graph initialized options if not specified
         """
@@ -363,15 +368,15 @@ class PolynomialDualGCS:
         self.vertices[name] = v
         return v
 
-    def MaxCostOverABox(self, vertex: DualVertex, lb: npt.NDArray, ub: npt.NDArray):
+    def MaxCostOverABox(self, vertex: DualVertex, lb: npt.NDArray, ub: npt.NDArray)->None:
         cost = -vertex.cost_of_uniform_integral_over_box(lb, ub)
         self.prog.AddLinearCost(cost)
 
-    def MaxCostAtAPoint(self, vertex: DualVertex, point, scaling=1):
+    def MaxCostAtAPoint(self, vertex: DualVertex, point:npt.NDArray, scaling=1)->None:
         cost = -vertex.cost_at_point(point)
         self.prog.AddLinearCost(cost * scaling)
 
-    def MaxCostAtSmallIntegralAroundPoint(self, vertex: DualVertex, point, scaling=1, eps=0.001):
+    def MaxCostAtSmallIntegralAroundPoint(self, vertex: DualVertex, point, scaling=1, eps=0.001)->None:
         cost = -vertex.cost_of_small_uniform_box_around_point(point, eps=eps)
         self.prog.AddLinearCost(cost * scaling)
 
@@ -382,7 +387,7 @@ class PolynomialDualGCS:
         Q_terminal: npt.NDArray,
         x_terminal: npt.NDArray,
         options: ProgramOptions = None,
-    ):
+    ) -> DualVertex:
         """
         Options will default to graph initialized options if not specified
 
@@ -422,7 +427,7 @@ class PolynomialDualGCS:
         v_right: DualVertex,
         cost_function: T.Callable,
         options: ProgramOptions = None,
-    ):
+    ) -> None:
         """
         adding two edges
         """
@@ -443,7 +448,7 @@ class PolynomialDualGCS:
         cost_function: T.Callable,
         options: ProgramOptions = None,
         bidirectional_edge_violation=Expression(0),
-    ):
+    ) -> DualEdge:
         """
         Options will default to graph initialized options if not specified
         """
@@ -500,6 +505,56 @@ class PolynomialDualGCS:
         diditwork(self.value_function_solution)
 
         return self.value_function_solution
+    
+    def export_a_gcs(self) -> T.Tuple[GraphOfConvexSets, T.Dict[str, GraphOfConvexSets.Vertex], GraphOfConvexSets.Vertex]:
+        gcs = GraphOfConvexSets()
+        terminal_vertex = gcs.AddVertex(Hyperrectangle([],[]), "the_terminal_vertex")
+        k = self.options.num_control_points
+
+        gcs_vertices = dict()
+
+        for v in self.vertices.values():
+            # add all vertices
+            if v.vertex_is_target:
+                gcs_v = gcs.AddVertex(v.get_hpoly(), v.name)
+                gcs_v.AddCost( v.cost_at_point( gcs_v.x() ) )
+                gcs.AddEdge(gcs_v, terminal_vertex, name = get_edge_name(v.name, terminal_vertex.name()))
+            else:    
+                convex_set = make_polyhedral_set_for_bezier_curve(v.get_hpoly(), k)
+                gcs_v = gcs.AddVertex(convex_set, v.name)
+            gcs_vertices[v.name] = gcs_v
+
+        for e in self.edges.values():
+            left_gcs_v = gcs_vertices[ e.left.name ]
+            right_gcs_v = gcs_vertices[ e.right.name ]
+            gcs_e = gcs.AddEdge(left_gcs_v, right_gcs_v, e.name)
+            # add cost
+            cost = Expression(0)
+            cost_function = e.cost_function
+            for i in range(k-1):
+                left_point = get_kth_control_point(gcs_e.xu(), i, k)
+                right_point = get_kth_control_point(gcs_e.xu(), i+1, k)
+                cost += cost_function(left_point, right_point)
+            gcs_e.AddCost(cost)
+
+            # add bezier curve continuity constraint
+            last_point = get_kth_control_point(gcs_e.xu(), k-1, k)
+            if e.right.vertex_is_target:
+                first_point = gcs_e.xv()
+            else:
+                first_point = get_kth_control_point(gcs_e.xv(), 0, k)
+            cons = eq( last_point, first_point )
+            for con in cons:
+                gcs_e.AddConstraint(con)
+            # add bezier curve smoothness constraint
+            if not e.right.vertex_is_target:
+                lastlast_point = get_kth_control_point(gcs_e.xu(), k-2, k)
+                second_point = get_kth_control_point(gcs_e.xv(), 1, k)
+                cons = eq( last_point-lastlast_point, second_point-first_point )
+                for con in cons:
+                    gcs_e.AddConstraint(con)
+        return gcs, gcs_vertices, terminal_vertex
+
 
     def get_policy_cost_for_region_plot(self, vertex_name: str):
         vertex = self.vertices[vertex_name]
