@@ -84,7 +84,6 @@ class DualVertex:
         vertex_is_target: bool = False,
     ):
         self.name = name
-        self.potential_poly_deg = 2  # type: int
         self.options = options
         self.vertex_is_start = vertex_is_start
         self.vertex_is_target = vertex_is_target
@@ -170,24 +169,21 @@ class DualVertex:
         else:
             # quadratic polynomial. special case due to convex functions and special quadratic implementations
             if self.options.potential_poly_deg == 2:
-                self.J_matrix, self.potential = define_quadratic_polynomial(
-                    prog, self.x, self.options.pot_type,
-                )
-                self.potential = self.potential
+                self.potential = define_quadratic_polynomial(prog, self.x, self.options.pot_type)[1]
             else:
                 # free polynomial
                 if self.options.pot_type == FREE_POLY:
                     self.potential = prog.NewFreePolynomial(
-                        self.vars, self.potential_poly_deg
+                        self.vars, self.options.potential_poly_deg
                     ).ToExpression()
                 # PSD polynomial
                 elif self.options.pot_type == PSD_POLY:
                     assert (
-                        self.potential_poly_deg % 2 == 0
+                        self.options.potential_poly_deg % 2 == 0
                     ), "can't make a PSD potential of uneven degree"
                     # potential is PSD polynomial
                     self.potential = prog.NewSosPolynomial(
-                        self.vars, self.potential_poly_deg
+                        self.vars, self.options.potential_poly_deg
                     )[0].ToExpression()
                 else:
                     raise NotImplementedError("potential type not supported")
@@ -313,7 +309,23 @@ class DualEdge:
 
         for k in range(self.options.num_control_points - 2):
             x = prog.NewIndeterminates(self.left.state_dim)
-            J_matrix, potential = define_quadratic_polynomial(prog, x, self.options.pot_type)
+            if self.options.potential_poly_deg == 2:
+                potential = define_quadratic_polynomial(prog, x, self.options.pot_type)[1]
+            else:
+                # free polynomial
+                if self.options.pot_type == FREE_POLY:
+                    potential = prog.NewFreePolynomial(
+                        Variables(x), self.options.potential_poly_deg
+                    ).ToExpression()
+                # PSD polynomial
+                elif self.options.pot_type == PSD_POLY:
+                    assert (
+                        self.options.potential_poly_deg % 2 == 0
+                    ), "can't make a PSD potential of uneven degree"
+                    # potential is PSD polynomial
+                    potential = prog.NewSosPolynomial( Variables(x), self.options.potential_poly_deg)[0].ToExpression()
+                else:
+                    raise NotImplementedError("potential type not supported")
             self.x_vectors.append(x)
             # self.J_matrices.append(J_matrix)
             self.potentials.append(potential)
