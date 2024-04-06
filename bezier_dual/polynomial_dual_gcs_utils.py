@@ -158,12 +158,13 @@ def define_sos_constraint_over_polyhedron(
         prog.AddLinearConstraint(ge(lambda_1_left, 0))
         prog.AddLinearConstraint(ge(lambda_1_right, 0))
     else:
+        xy_vars = Variables(np.hstack((left_vars, right_vars)))
         lambda_1_left = [
-            prog.NewSosPolynomial(left_vars, deg1)[0].ToExpression()
+            prog.NewSosPolynomial(xy_vars, deg1)[0].ToExpression()
             for _ in range(len(deg_1_cons_l))
         ]
         lambda_1_right = [
-            prog.NewSosPolynomial(right_vars, deg1)[0].ToExpression()
+            prog.NewSosPolynomial(xy_vars, deg1)[0].ToExpression()
             for _ in range(len(deg_1_cons_r))
         ]
         
