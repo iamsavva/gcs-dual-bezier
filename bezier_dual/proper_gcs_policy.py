@@ -202,8 +202,7 @@ def solve_convex_restriction(
 
             # assert that next control point is feasible -- for bezier curve continuity
             if not vertex.vertex_is_target:
-                hpoly = vertex.get_hpoly()
-                prog.AddLinearConstraint(le(hpoly.A().dot(last_x + last_delta), hpoly.b()))
+                prog.AddLinearConstraint(ge(vertex.B.dot(np.hstack(([1], last_x + last_delta))), 0))
 
         else:
             bezier_curve = [last_x]
@@ -215,11 +214,10 @@ def solve_convex_restriction(
                 # knot point inside a set
                 if j == options.num_control_points - 1:
                     # inside the intersection
-                    hpoly = edge.intersection_set
+                    prog.AddLinearConstraint(ge(edge.B_intersection.dot(np.hstack(([1], x_j))), 0))
                 else:
                     # inside the vertex
-                    hpoly = vertex.get_hpoly()
-                prog.AddLinearConstraint(le(hpoly.A().dot(x_j), hpoly.b()))
+                    prog.AddLinearConstraint(ge(vertex.B.dot(np.hstack(([1], x_j))), 0))
 
                 # quadratic cost with previous point
                 prog.AddQuadraticCost(edge.cost_function(last_x, x_j))

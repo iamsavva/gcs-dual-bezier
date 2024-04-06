@@ -132,6 +132,7 @@ def define_sos_constraint_over_polyhedron(
     function: Expression,
     B_left: npt.NDArray,
     B_right: npt.NDArray,
+    options: ProgramOptions
 ):
 
     s_procedure = Expression(0)
@@ -150,26 +151,45 @@ def define_sos_constraint_over_polyhedron(
     # deg 1
     deg_1_cons_l = Bl.dot(x_and_1)
     deg_1_cons_r = Br.dot(y_and_1)
-    lambda_1_left = prog.NewContinuousVariables(len(deg_1_cons_l))
-    lambda_1_right = prog.NewContinuousVariables(len(deg_1_cons_r))
-
-    prog.AddLinearConstraint(ge(lambda_1_left, 0))
-    prog.AddLinearConstraint(ge(lambda_1_right, 0))
+    deg1 = options.s_procedure_multiplier_degree_for_linear_inequalities
+    if deg1 == 0:
+        lambda_1_left = prog.NewContinuousVariables(len(deg_1_cons_l))
+        lambda_1_right = prog.NewContinuousVariables(len(deg_1_cons_r))
+        prog.AddLinearConstraint(ge(lambda_1_left, 0))
+        prog.AddLinearConstraint(ge(lambda_1_right, 0))
+    else:
+        lambda_1_left = [
+            prog.NewSosPolynomial(left_vars, deg1)[0].ToExpression()
+            for _ in range(len(deg_1_cons_l))
+        ]
+        lambda_1_right = [
+            prog.NewSosPolynomial(right_vars, deg1)[0].ToExpression()
+            for _ in range(len(deg_1_cons_r))
+        ]
+        
     s_procedure += deg_1_cons_l.dot(lambda_1_left) + deg_1_cons_r.dot(lambda_1_right)
 
     # deg 2
-    lambda_2_left = prog.NewSymmetricContinuousVariables(len(deg_1_cons_l))
-    lambda_2_right = prog.NewSymmetricContinuousVariables(len(deg_1_cons_r))
-    lambda_2_left_right = prog.NewContinuousVariables(len(deg_1_cons_r), len(deg_1_cons_r))
+    if options.s_procedure_use_quadratic_multilpiers:
+        lambda_2_left = prog.NewSymmetricContinuousVariables(len(deg_1_cons_l))
+        lambda_2_right = prog.NewSymmetricContinuousVariables(len(deg_1_cons_r))
+        prog.AddLinearConstraint(ge(lambda_2_left, 0))
+        prog.AddLinearConstraint(ge(lambda_2_right, 0))
+        s_procedure += np.sum((Bl.dot(np.outer(x_and_1, x_and_1)).dot(Bl.T)) * lambda_2_left)
+        s_procedure += np.sum((Br.dot(np.outer(y_and_1, y_and_1)).dot(Br.T)) * lambda_2_right)
 
-    prog.AddLinearConstraint(ge(lambda_2_left, 0))
-    prog.AddLinearConstraint(ge(lambda_2_right, 0))
-    prog.AddLinearConstraint(ge(lambda_2_left_right, 0))
+        if options.s_procedure_quadratic_multiply_left_and_right:
+            lambda_2_left_right = prog.NewContinuousVariables(len(deg_1_cons_r), len(deg_1_cons_r))
+            prog.AddLinearConstraint(ge(lambda_2_left_right, 0))
+            s_procedure += np.sum((Bl.dot(np.outer(x_and_1, y_and_1)).dot(Br.T)) * lambda_2_left_right)
+        else:
+            lambda_2_left_right = []
+    else:
+        lambda_2_left = []
+        lambda_2_right = []
+        lambda_2_left_right = []
 
-    s_procedure += np.sum((Bl.dot(np.outer(x_and_1, x_and_1)).dot(Bl.T)) * lambda_2_left)
-    s_procedure += np.sum((Br.dot(np.outer(y_and_1, y_and_1)).dot(Br.T)) * lambda_2_right)
-    s_procedure += np.sum((Bl.dot(np.outer(x_and_1, y_and_1)).dot(Br.T)) * lambda_2_left_right)
-
+        
     expr = function - s_procedure
     prog.AddSosConstraint(expr)
 
@@ -183,38 +203,40 @@ def define_sos_constraint_over_polyhedron(
     )
 
 
-def define_general_nonnegativity_constraint_on_a_set(
-    prog: MathematicalProgram,
-    function: Expression,
-    linear_inequalities: T.List[Expression],
-    quadratic_inequalities: T.List[Expression],
-    left_vars: npt.NDArray,
-    right_vars: npt.NDArray,
-    options: ProgramOptions
-):
-    x, y = left_vars, right_vars
-    xy_vars = Variables(np.hstack((x, y)))
 
-    # make linear terms multipliers
-    # if using degree 0 multipliers -- the define non-negative variables
-    deg1 = options.s_procedure_multiplier_degree_for_linear_inequalities
-    if deg1 == 0:
-        linear_multipliers = prog.NewContinuousVariables(len(linear_inequalities))
-        prog.AddLinearConstraint(ge(linear_multipliers, 0))
-    else:
-        linear_multipliers = [
-            prog.NewSosPolynomial(xy_vars, deg1)[0].ToExpression()
-            for _ in range(len(linear_inequalities))
-        ]
-    s_procedure_linear_terms = np.array(linear_inequalities).dot(np.array(linear_multipliers))
 
-    # NOTE: we are using degree 0 multipliers for quadratic constraints cause we aren't insane
-    quadratic_multipliers = prog.NewContinuousVariables(len(quadratic_inequalities))
-    prog.AddLinearConstraint(ge(quadratic_multipliers, 0))
+# def define_general_nonnegativity_constraint_on_a_set(
+#     prog: MathematicalProgram,
+#     function: Expression,
+#     linear_inequalities: T.List[Expression],
+#     quadratic_inequalities: T.List[Expression],
+#     left_vars: npt.NDArray,
+#     right_vars: npt.NDArray,
+#     options: ProgramOptions
+# ):
+#     x, y = left_vars, right_vars
+#     xy_vars = Variables(np.hstack((x, y)))
 
-    s_procedure_quad_terms = np.array(quadratic_inequalities).dot(np.array(quadratic_multipliers))
+#     # make linear terms multipliers
+#     # if using degree 0 multipliers -- the define non-negative variables
+#     deg1 = options.s_procedure_multiplier_degree_for_linear_inequalities
+#     if deg1 == 0:
+#         linear_multipliers = prog.NewContinuousVariables(len(linear_inequalities))
+#         prog.AddLinearConstraint(ge(linear_multipliers, 0))
+#     else:
+#         linear_multipliers = [
+#             prog.NewSosPolynomial(xy_vars, deg1)[0].ToExpression()
+#             for _ in range(len(linear_inequalities))
+#         ]
+#     s_procedure_linear_terms = np.array(linear_inequalities).dot(np.array(linear_multipliers))
 
-    expr = function - s_procedure_linear_terms - s_procedure_quad_terms
-    prog.AddSosConstraint(expr)
+#     # NOTE: we are using degree 0 multipliers for quadratic constraints cause we aren't insane
+#     quadratic_multipliers = prog.NewContinuousVariables(len(quadratic_inequalities))
+#     prog.AddLinearConstraint(ge(quadratic_multipliers, 0))
 
-    return 
+#     s_procedure_quad_terms = np.array(quadratic_inequalities).dot(np.array(quadratic_multipliers))
+
+#     expr = function - s_procedure_linear_terms - s_procedure_quad_terms
+#     prog.AddSosConstraint(expr)
+
+#     return 

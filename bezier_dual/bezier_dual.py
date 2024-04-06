@@ -62,7 +62,8 @@ from polynomial_dual_gcs_utils import (
     get_product_constraints,
     make_linear_set_inequalities, 
     get_B_matrix,
-    define_general_nonnegativity_constraint_on_a_set
+    define_sos_constraint_over_polyhedron
+    # define_general_nonnegativity_constraint_on_a_set
 )
 
 delta = 0.01
@@ -152,8 +153,14 @@ class DualVertex:
         """
         Assuming that sets are polyhedrons
         """
-        self.linear_set_inequalities = make_linear_set_inequalities(self.x, self.convex_set, self.set_type)
-        self.quadratic_set_inequalities = get_product_constraints(self.linear_set_inequalities)
+        # self.linear_set_inequalities = make_linear_set_inequalities(self.x, self.convex_set, self.set_type)
+        # self.quadratic_set_inequalities = get_product_constraints(self.linear_set_inequalities)
+        # TODO: drop the polyhedral assumption
+        # in principle, expectations should be taken differently
+        hpoly = self.get_hpoly()
+        # inequalities of the form b[i] - a.T x = g_i(x) >= 0
+        A, b = hpoly.A(), hpoly.b()
+        self.B = np.hstack((b.reshape((len(b), 1)), -A))
         
 
     def define_potential(self, prog: MathematicalProgram, specific_potential: T.Callable = None):
@@ -268,12 +275,13 @@ class DualEdge:
         self.cost_function = cost_function
         self.options = options
 
-        self.intersection_set = self.intersect_left_right_sets()
+        # self.intersection_set = self.intersect_left_right_sets()
+        self.B_intersection = self.intersect_left_right_sets()
         self.bidirectional_edge_violation = bidirectional_edge_violation
 
         self.define_edge_polynomials_and_sos_constraints(prog)
 
-    def intersect_left_right_sets(self) -> HPolyhedron:
+    def intersect_left_right_sets(self) -> npt.NDArray:
         left_hpoly = self.left.get_hpoly()
         right_hpoly = self.right.get_hpoly()
         intersection_hpoly = left_hpoly.Intersection(right_hpoly)
@@ -284,10 +292,10 @@ class DualEdge:
         assert cheb_success and (
             r > 1e-5
         ), "intersection of vertex sets connected by edge is low dimensional"
-        return intersection_hpoly
-        # A, b = intersection_hpoly.A(), intersection_hpoly.b()
-        # B = np.hstack((b.reshape((len(b), 1)), -A))
-        # return B
+        # return intersection_hpoly
+        A, b = intersection_hpoly.A(), intersection_hpoly.b()
+        B = np.hstack((b.reshape((len(b), 1)), -A))
+        return B
 
     def define_edge_polynomials_and_sos_constraints(self, prog: MathematicalProgram):
         """
@@ -295,6 +303,7 @@ class DualEdge:
         """
 
         self.x_vectors = []
+        # self.J_matrices = []
         self.potentials = []
 
         # -----------------------------------------------
@@ -303,8 +312,9 @@ class DualEdge:
 
         for k in range(self.options.num_control_points - 2):
             x = prog.NewIndeterminates(self.left.state_dim)
-            potential = define_quadratic_polynomial(prog, x, self.options.pot_type)[1]
+            J_matrix, potential = define_quadratic_polynomial(prog, x, self.options.pot_type)
             self.x_vectors.append(x)
+            # self.J_matrices.append(J_matrix)
             self.potentials.append(potential)
 
         # -----------------------------------------------
@@ -314,74 +324,39 @@ class DualEdge:
         # -----------------------------------------------
         # J_{v} to J_{vw,1}
         x_left, x_right = self.left.x, self.x_vectors[0]
-        left_linear_ineq = make_linear_set_inequalities(x_left, self.left.convex_set, self.left.set_type)
-        right_linear_ineq = make_linear_set_inequalities(x_right, self.left.convex_set, self.left.set_type)
-        linear_ineq = left_linear_ineq + right_linear_ineq
-        if self.options.s_procedure_use_quadratic_multilpiers:
-            if self.options.s_procedure_quadratic_multiply_left_and_right:
-                quadratic_ineq = get_product_constraints(linear_ineq)
-            else:
-                left_quadratic_ineq = get_product_constraints(left_linear_ineq)
-                right_quadratic_ineq = get_product_constraints(right_linear_ineq)
-                quadratic_ineq = left_quadratic_ineq + right_quadratic_ineq
-        else:
-            quadratic_ineq = []
-
+        B_left, B_right = self.left.B, self.left.B
         edge_cost = self.cost_function(x_left, x_right)
         G_of_v = self.left.eval_G(x_right - x_left)
         left_potential = self.left.potential
         right_potential = self.potentials[0]
+
         # expr = edge_cost + right_potential - left_potential - G_of_v+ self.bidirectional_edge_violation/(self.options.num_control_points-1)
         expr = edge_cost + right_potential - left_potential - G_of_v
-        define_general_nonnegativity_constraint_on_a_set(prog, expr, linear_ineq, quadratic_ineq, x_left, x_right, self.options)
+        define_sos_constraint_over_polyhedron(prog, x_left, x_right, expr, B_left, B_right, self.options)
 
         # -------------------------------------------------
         # J_{vw, k} to J_{vw,k+1}
         for k in range(self.options.num_control_points - 3):
             x_left, x_right = self.x_vectors[k], self.x_vectors[k + 1]
-            # TODO: repeated code, should in principle be put into a function
-            left_linear_ineq = make_linear_set_inequalities(x_left, self.left.convex_set, self.left.set_type)
-            right_linear_ineq = make_linear_set_inequalities(x_right, self.left.convex_set, self.left.set_type)
-            linear_ineq = left_linear_ineq + right_linear_ineq
-            if self.options.s_procedure_use_quadratic_multilpiers:
-                if self.options.s_procedure_quadratic_multiply_left_and_right:
-                    quadratic_ineq = get_product_constraints(linear_ineq)
-                else:
-                    left_quadratic_ineq = get_product_constraints(left_linear_ineq)
-                    right_quadratic_ineq = get_product_constraints(right_linear_ineq)
-                    quadratic_ineq = left_quadratic_ineq + right_quadratic_ineq
-            else:
-                quadratic_ineq = []
-
+            B_left, B_right = self.left.B, self.left.B
             edge_cost = self.cost_function(x_left, x_right)
             left_potential = self.potentials[k]
             right_potential = self.potentials[k + 1]
+
             # expr = edge_cost + right_potential - left_potential+ self.bidirectional_edge_violation/(self.options.num_control_points-1)
             expr = edge_cost + right_potential - left_potential
-            define_general_nonnegativity_constraint_on_a_set(prog, expr, linear_ineq, quadratic_ineq, x_left, x_right, self.options)
+            define_sos_constraint_over_polyhedron(prog, x_left, x_right, expr, B_left, B_right, self.options)
 
         # -------------------------------------------------
         # J_{vw, n} to J_{w}
         n = self.options.num_control_points - 3
         x_left, x_right = self.x_vectors[n], self.right.x
-        
-        left_linear_ineq = make_linear_set_inequalities(x_left, self.left.convex_set, self.left.set_type)
-        right_linear_ineq = make_linear_set_inequalities(x_right, self.intersection_set, HPolyhedron)
-        linear_ineq = left_linear_ineq + right_linear_ineq
-        if self.options.s_procedure_use_quadratic_multilpiers:
-            if self.options.s_procedure_quadratic_multiply_left_and_right:
-                quadratic_ineq = get_product_constraints(linear_ineq)
-            else:
-                left_quadratic_ineq = get_product_constraints(left_linear_ineq)
-                right_quadratic_ineq = get_product_constraints(right_linear_ineq)
-                quadratic_ineq = left_quadratic_ineq + right_quadratic_ineq
-        else:
-            quadratic_ineq = []
-
+        B_left, B_right = self.left.B, self.B_intersection
         edge_cost = self.cost_function(x_left, x_right)
         G_of_v = self.left.eval_G(x_right - x_left)
         left_potential = self.potentials[n]
         right_potential = self.right.potential
+
         # NOTE: adding bidriectional edge violation just to the last constraint
         # expr = edge_cost + right_potential + G_of_v - left_potential + self.bidirectional_edge_violation/(self.options.num_control_points-1)
         expr = (
@@ -392,7 +367,7 @@ class DualEdge:
             + self.bidirectional_edge_violation
             + self.right.total_flow_in_violation
         )
-        define_general_nonnegativity_constraint_on_a_set(prog, expr, linear_ineq, quadratic_ineq, x_left, x_right, self.options)
+        define_sos_constraint_over_polyhedron(prog, x_left, x_right, expr, B_left, B_right, self.options)
 
 
 class PolynomialDualGCS:
