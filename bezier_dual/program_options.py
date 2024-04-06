@@ -26,20 +26,25 @@ class ProgramOptions:
         self.zero_offset = 50
 
         self.max_flow_through_edge = 1
-
-        self.use_robust_mosek_parameters = True
-
         self.policy_lookahead = 1
-        self.policy_use_gcs = True
 
-        self.policy_gcs_edge_cost_offset = 0
 
+        # ----------------------------------
+        # MOSEK solver related
+        self.use_robust_mosek_parameters = True
         self.MSK_DPAR_INTPNT_CO_TOL_REL_GAP = 1e-8
         self.MSK_DPAR_INTPNT_CO_TOL_PFEAS = 1e-8
         self.MSK_DPAR_INTPNT_CO_TOL_DFEAS = 1e-8
 
+
+        # ----------------------------------
+        # S procedure
+        self.s_procedure_multiplier_degree_for_linear_inequalities = 0
+        self.s_procedure_use_quadratic_multilpiers = True
+        self.s_procedure_quadratic_multiply_left_and_right = True
+
         # ---------------------------------------------
-        # parameters specific to bezier
+        # parameters specific to bezier curves
         self.num_control_points = 3
         self.policy_add_G_term = False
         self.use_G_term_in_value_synthesis = True
@@ -47,40 +52,37 @@ class ProgramOptions:
 
         # this should be added automatically if i use corresponding constraints on dual
         self.policy_add_violation_penalties = False # this doesn't seem to help
-        
-
-        self.policy_verbose_choices = False
-        self.policy_verbose_number_of_restrictions_solves = False
 
         self.postprocess_by_solving_restriction_on_mode_sequence = True
         self.verbose_restriction_improvement = False
 
-        # ---
-
+        # ----------------------------------
+        # specify the policy
         self.use_lookahead_policy = False
         self.use_lookahead_with_backtracking_policy = False
         self.use_cheap_a_star_policy = False
+        self.policy_use_zero_heuristic = False # if you wanna use Dijkstra instead
 
-        self.policy_use_zero_heuristic = False
-
-        # solve with default otherwise
+        # ----------------------------------
+        # solver selection for the lookaheads in the policy
         self.solve_with_gurobi = False
         self.solve_with_mosek = False
         self.solve_with_snopt = False
         self.solve_with_clarabel = False
         self.solve_with_osqp = False
 
+        self.policy_verbose_choices = False
+        self.policy_verbose_number_of_restrictions_solves = False
+
 
         # ----------------------------------
+        # GCS policy related settings.
+        # as of now, only used for computing optimal solutions.
         self.gcs_policy_use_convex_relaxation = False
         self.gcs_policy_max_rounding_trials = 30
         self.gcs_policy_use_preprocessing = True
 
-
-        # ----------------
-        self.s_procedure_multiplier_degree_for_linear_inequalities = 0
-        self.s_procedure_use_quadratic_multilpiers = True
-        self.s_procedure_quadratic_multiply_left_and_right = True
+        
         
 
     def vertify_options_validity(self):

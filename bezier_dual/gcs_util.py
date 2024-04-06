@@ -139,7 +139,6 @@ def solution_not_tight(gcs, solution):
         WARN(not_tight_edges, "not tight edges out of", total_edges, "total.")
         non_zero_edges = np.sum(0.02 < np.array(flow_results))
         WARN(non_zero_edges, "non-zero edges out of", total_edges, "total.")
-
     return not_tight
 
 

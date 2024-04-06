@@ -301,6 +301,7 @@ class DualEdge:
         """
         define edge appropriate SOS constraints
         """
+        opt = self.options
 
         self.x_vectors = []
         # self.J_matrices = []
@@ -332,7 +333,7 @@ class DualEdge:
 
         # expr = edge_cost + right_potential - left_potential - G_of_v+ self.bidirectional_edge_violation/(self.options.num_control_points-1)
         expr = edge_cost + right_potential - left_potential - G_of_v
-        define_sos_constraint_over_polyhedron(prog, x_left, x_right, expr, B_left, B_right, self.options)
+        define_sos_constraint_over_polyhedron(prog, x_left, x_right, expr, B_left, B_right, opt)
 
         # -------------------------------------------------
         # J_{vw, k} to J_{vw,k+1}
@@ -345,7 +346,7 @@ class DualEdge:
 
             # expr = edge_cost + right_potential - left_potential+ self.bidirectional_edge_violation/(self.options.num_control_points-1)
             expr = edge_cost + right_potential - left_potential
-            define_sos_constraint_over_polyhedron(prog, x_left, x_right, expr, B_left, B_right, self.options)
+            define_sos_constraint_over_polyhedron(prog, x_left, x_right, expr, B_left, B_right, opt)
 
         # -------------------------------------------------
         # J_{vw, n} to J_{w}
@@ -367,7 +368,7 @@ class DualEdge:
             + self.bidirectional_edge_violation
             + self.right.total_flow_in_violation
         )
-        define_sos_constraint_over_polyhedron(prog, x_left, x_right, expr, B_left, B_right, self.options)
+        define_sos_constraint_over_polyhedron(prog, x_left, x_right, expr, B_left, B_right, opt)
 
 
 class PolynomialDualGCS:
@@ -592,73 +593,3 @@ class PolynomialDualGCS:
                 for con in cons:
                     gcs_e.AddConstraint(con)
         return gcs, gcs_vertices, terminal_vertex
-
-
-    def get_policy_cost_for_region_plot(self, vertex_name: str):
-        vertex = self.vertices[vertex_name]
-        assert vertex.set_type == Hyperrectangle, "vertex not a Hyperrectangle, can't make a plot"
-        assert vertex.state_dim == 2, "can't plot generate plot for non-2d vertex"
-
-        box = vertex.convex_set
-        eps = 0
-        N = 100
-
-        X = np.linspace(box.lb()[0] - eps, box.ub()[0] + eps, N)
-        Y = np.linspace(box.lb()[1] - eps, box.ub()[1] + eps, N)
-        X, Y = np.meshgrid(X, Y)
-
-        def eval_func(x, y):
-            expression = vertex.cost_at_point(np.array([x, y]), self.value_function_solution)
-            return expression
-
-        evaluator = np.vectorize(eval_func)
-
-        return X, Y, evaluator(X, Y)
-
-    def make_plots(self, fig=None, cmax=30, offset=0):
-        if fig is None:
-            fig = go.Figure()
-
-        for v_name in self.vertices.keys():
-            X, Y, Z = self.get_policy_cost_for_region_plot(v_name)
-            # Create filled 3D contours
-            fig.add_trace(
-                go.Surface(
-                    x=X,
-                    y=Y,
-                    z=Z - offset,
-                    surfacecolor=Z - offset,
-                    name=v_name,
-                    cmin=0,
-                    cmax=cmax,
-                )
-            )
-
-        # Update layout
-        fig.update_layout(scene=dict(xaxis_title="X", yaxis_title="Y", zaxis_title="Z"))
-
-        fig.update_layout(height=800, width=800, title_text="Value functions ")
-
-        return fig
-
-    def make_1d_plot_potential(self, fig: go.Figure, v: DualVertex):
-        assert type(v.convex_set) == Hyperrectangle
-        assert len(v.convex_set.lb()) == 1
-        x_lin = np.linspace(v.convex_set.lb()[0], v.convex_set.ub()[0], 100, endpoint=True)
-
-        def evaluate_0(y):
-            potential = self.value_function_solution.GetSolution(v.potential)
-            f_potential = lambda x: potential.Substitute({v.x[i]: x[i] for i in range(v.state_dim)})
-            return f_potential(np.array([y])).Evaluate()
-
-        offset = self.options.zero_offset + self.options.policy_gcs_edge_cost_offset
-        # fig.update_layout(title=r"$\text{Cost-to-go comparison over set }\;X_w$")
-        fig.add_trace(
-            go.Scatter(
-                x=x_lin,
-                y=np.vectorize(evaluate_0)(x_lin) - offset,
-                mode="lines",
-                name=r"$J_v(x)$",
-                line=dict(color="blue"),
-            )
-        )
