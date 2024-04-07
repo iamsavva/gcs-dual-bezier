@@ -35,11 +35,6 @@ from pydrake.math import ( # pylint: disable=import-error, no-name-in-module, un
 
 from IPython.display import Markdown, display
 
-def make_moment_matrix(m0, m1:npt.NDArray, m2:npt.NDArray):
-    assert m2.shape == (len(m1), len(m1))
-    assert m1.shape == (len(m1),)
-    return np.vstack((np.hstack((m0, m1)), np.hstack( (m1.reshape((len(m1),1)), m2) )))
-
 def ERROR(*texts, verbose: bool = True):
     if verbose:
         print(Fore.RED + " ".join([str(text) for text in texts]))
@@ -212,3 +207,8 @@ def make_polyhedral_set_for_bezier_curve(hpoly:HPolyhedron, num_control_points:i
 def get_kth_control_point(bezier:npt.NDArray, k:int, num_control_points:int) -> npt.NDArray:
     state_dim = len(bezier)//num_control_points
     return bezier[ k*state_dim:(k+1)*state_dim ]
+
+def make_moment_matrix(m0, m1:npt.NDArray, m2:npt.NDArray):
+    assert m2.shape == (len(m1), len(m1))
+    assert m1.shape == (len(m1),)
+    return np.vstack((np.hstack((m0, m1)), np.hstack( (m1.reshape((len(m1),1)), m2) )))

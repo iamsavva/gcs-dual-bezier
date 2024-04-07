@@ -267,7 +267,12 @@ class DualVertex:
     
     def cost_of_moment_measure(self, moment_matrix:npt.NDArray) -> Expression:
         assert self.J_matrix is not None
-        assert moment_matrix.shape == (self.state_dim, self.state_dim)
+        assert moment_matrix.shape == (self.state_dim+1, self.state_dim+1)
+        # assert that moment matrix satisfies necessary conditions to be supported on set
+        e1 = np.zeros(self.state_dim + 1)
+        e1[0] = 1
+        assert np.all(self.B.dot(moment_matrix).dot(e1) >= 0), "moment matrix not supported on set"
+        assert np.all(self.B.dot(moment_matrix).dot(self.B.T) >= 0), "moment matrix not supported on set"
         return np.sum(self.J_matrix * moment_matrix)
 
 
@@ -461,6 +466,10 @@ class PolynomialDualGCS:
     def MaxCostAtSmallIntegralAroundPoint(self, vertex: DualVertex, point, scaling=1, eps=0.001)->None:
         cost = -vertex.cost_of_small_uniform_box_around_point(point, eps=eps)
         self.prog.AddLinearCost(cost * scaling)
+
+    def MaxCostOverMoments(self, vertex:DualVertex, moment_matrix:npt.NDArray) -> None:
+        cost = -vertex.cost_of_moment_measure(moment_matrix)
+        self.prog.AddLinearCost(cost)
 
     def AddTargetVertexWithQuadraticTerminalCost(
         self,
