@@ -26,8 +26,19 @@ from pydrake.symbolic import ( # pylint: disable=import-error, no-name-in-module
     Variables,
     Expression,
 )  
+
+from pydrake.math import ( # pylint: disable=import-error, no-name-in-module, unused-import
+    ge,
+    eq,
+    le,
+)  
+
 from IPython.display import Markdown, display
 
+def make_moment_matrix(m0, m1:npt.NDArray, m2:npt.NDArray):
+    assert m2.shape == (len(m1), len(m1))
+    assert m1.shape == (len(m1),)
+    return np.vstack((np.hstack((m0, m1)), np.hstack( (m1.reshape((len(m1),1)), m2) )))
 
 def ERROR(*texts, verbose: bool = True):
     if verbose:
@@ -144,7 +155,7 @@ class timeit:
         INFO("All " + descriptor + " took %.3fs" % (self.totals))
 
 
-def ChebyshevCenter(poly: HPolyhedron) -> T.Tuple[bool, npt.NDArray, float]:
+def ChebyshevCenter(poly: HPolyhedron, center:npt.NDArray=None) -> T.Tuple[bool, npt.NDArray, float]:
 
     # Ax <= b
     m = poly.A().shape[0]
@@ -158,6 +169,10 @@ def ChebyshevCenter(poly: HPolyhedron) -> T.Tuple[bool, npt.NDArray, float]:
     big_num = 100000
 
     prog.AddBoundingBoxConstraint(0, big_num, r)
+
+    if center is not None:
+        assert len(center) == n
+        prog.AddLinearConstraint( eq(x,center) )
 
     a = np.zeros((1, n + 1))
     for i in range(m):

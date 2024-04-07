@@ -53,7 +53,8 @@ from util import (
     ERROR,
     ChebyshevCenter,
     make_polyhedral_set_for_bezier_curve,
-    get_kth_control_point
+    get_kth_control_point,
+    make_moment_matrix
 )  # pylint: disable=import-error, no-name-in-module, unused-import
 
 from gcs_util import get_edge_name, make_quadratic_cost_function_matrices
@@ -168,8 +169,18 @@ class DualVertex:
             self.potential = specific_potential(self.x)
         else:
             # quadratic polynomial. special case due to convex functions and special quadratic implementations
-            if self.options.potential_poly_deg == 2:
-                self.potential = define_quadratic_polynomial(prog, self.x, self.options.pot_type)[1]
+            if self.options.potential_poly_deg == 0:
+                a = np.zeros(self.state_dim)
+                b = prog.NewContinuousVariables(1)[0]
+                self.J_matrix = make_moment_matrix(b, a, np.zeros((self.state_dim, self.state_dim)))
+                self.potential = Expression(b)
+            if self.options.potential_poly_deg == 1:
+                a = prog.NewContinuousVariables(self.state_dim)
+                b = prog.NewContinuousVariables(1)[0]
+                self.J_matrix = make_moment_matrix(b, a, np.zeros((self.state_dim, self.state_dim)))
+                self.potential = 2 * a.dot(self.x) + b
+            elif self.options.potential_poly_deg == 2:
+                self.J_matrix, self.potential = define_quadratic_polynomial(prog, self.x, self.options.pot_type)
             else:
                 # free polynomial
                 if self.options.pot_type == FREE_POLY:
@@ -194,16 +205,18 @@ class DualVertex:
             self.G_matrix = np.zeros((self.state_dim + 1, self.state_dim + 1))
             self.eval_G = lambda x: Expression(0)
         else:
-            self.G_matrix = prog.NewSymmetricContinuousVariables(self.state_dim + 1)
+            if self.options.use_G_term_in_value_synthesis:
+                # TODO: check if this matters or not
+                self.G_matrix = prog.NewSymmetricContinuousVariables(self.state_dim + 1)
 
-            def eval_G(x):
-                x_and_1 = np.hstack(([1], x))
-                return x_and_1.dot(self.G_matrix).dot(x_and_1)
+                def eval_G(x):
+                    x_and_1 = np.hstack(([1], x))
+                    return x_and_1.dot(self.G_matrix).dot(x_and_1)
 
-            self.eval_G = eval_G
-            # TODO: check if this matters or not
-            if not self.options.use_G_term_in_value_synthesis:
-                self.eval_G = lambda x: Expression(0) 
+                self.eval_G = eval_G
+            else:
+                self.G_matrix = np.zeros((self.state_dim + 1, self.state_dim + 1))
+                self.eval_G = lambda x: Expression(0)
 
     def cost_at_point(self, x: npt.NDArray, solution: MathematicalProgramResult = None):
         """
@@ -251,6 +264,12 @@ class DualVertex:
         """
         assert len(point) == self.state_dim
         return self.cost_of_uniform_integral_over_box(point - eps, point + eps, solution)
+    
+    def cost_of_moment_measure(self, moment_matrix:npt.NDArray) -> Expression:
+        assert self.J_matrix is not None
+        assert moment_matrix.shape == (self.state_dim, self.state_dim)
+        return np.sum(self.J_matrix * moment_matrix)
+
 
 
 class DualEdge:
@@ -309,7 +328,17 @@ class DualEdge:
 
         for k in range(self.options.num_control_points - 2):
             x = prog.NewIndeterminates(self.left.state_dim)
-            if self.options.potential_poly_deg == 2:
+            state_dim = self.left.state_dim
+
+            if self.options.potential_poly_deg == 0:
+                a = np.zeros(state_dim)
+                b = prog.NewContinuousVariables(1)[0]
+                potential = Expression(b)
+            if self.options.potential_poly_deg == 1:
+                a = prog.NewContinuousVariables(state_dim)
+                b = prog.NewContinuousVariables(1)[0]
+                potential = 2 * a.dot(x) + b
+            elif self.options.potential_poly_deg == 2:
                 potential = define_quadratic_polynomial(prog, x, self.options.pot_type)[1]
             else:
                 # free polynomial
@@ -323,9 +352,13 @@ class DualEdge:
                         self.options.potential_poly_deg % 2 == 0
                     ), "can't make a PSD potential of uneven degree"
                     # potential is PSD polynomial
-                    potential = prog.NewSosPolynomial( Variables(x), self.options.potential_poly_deg)[0].ToExpression()
+                    potential = prog.NewSosPolynomial(
+                        Variables(x), self.options.potential_poly_deg
+                    )[0].ToExpression()
                 else:
                     raise NotImplementedError("potential type not supported")
+                
+
             self.x_vectors.append(x)
             # self.J_matrices.append(J_matrix)
             self.potentials.append(potential)

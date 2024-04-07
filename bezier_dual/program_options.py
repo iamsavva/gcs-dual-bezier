@@ -23,7 +23,6 @@ class ProgramOptions:
         # potential type
         self.potential_poly_deg = 2
         self.pot_type = FREE_POLY
-        self.zero_offset = 50
 
         self.max_flow_through_edge = 1
         self.policy_lookahead = 1
