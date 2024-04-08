@@ -308,6 +308,7 @@ def get_optimal_path(
     gcs_options.convex_relaxation = options.gcs_policy_use_convex_relaxation
     gcs_options.max_rounding_trials = options.gcs_policy_max_rounding_trials
     gcs_options.preprocessing = options.gcs_policy_use_preprocessing
+    gcs_options.max_rounded_paths = options.gcs_policy_max_rounded_paths
 
     # solve
     timer = timeit()
@@ -319,15 +320,16 @@ def get_optimal_path(
     cost = result.get_optimal_cost()
 
     edge_path = regular_gcs.GetSolutionPath(start_vertex, terminal_vertex, result)
-    vertex_name_path = [vertex.name]
+    vertex_name_path = []
     value_path = []
     for e in edge_path[:-1]:
         vertex_name_path.append(e.u().name())
         full_curve = result.GetSolution(e.u().x())
         split_up_curve = full_curve.reshape( (k, vertex.state_dim) )
         value_path.append([x for x in split_up_curve])
+    vertex_name_path.append(edge_path[-1].u().name())
         
-    return dt, cost, value_path, [gcs.vertices[name] for name in vertex_name_path[:-1]]
+    return dt, cost, value_path, [gcs.vertices[name] for name in vertex_name_path]
 
 
 def get_k_step_optimal_path(
@@ -408,7 +410,7 @@ def lookahead_policy(
     initial_state: npt.NDArray,
     initial_previous_state: npt.NDArray = None,
     options: ProgramOptions = None,
-) -> T.List[T.List[npt.NDArray]]:
+) -> T.Tuple[T.List[T.List[npt.NDArray]], T.List[DualVertex]]:
     """
     K-step lookahead rollout policy.
     Returns a list of bezier curves. Each bezier curve is a list of control points (numpy arrays).
@@ -433,7 +435,7 @@ def lookahead_policy(
         )
         if bezier_path is None:
             WARN("k-step optimal path couldn't find a solution")
-            return None
+            return None, None
         # take just the first action from that path, then repeat
         first_segment = bezier_path[0]
         full_path.append(first_segment)
@@ -463,7 +465,7 @@ def lookahead_policy(
                 "% worse",
             )
 
-    return full_path
+    return full_path, vertex_path_so_far
 
 
 
@@ -473,7 +475,7 @@ def lookahead_with_backtracking_policy(
     initial_state: npt.NDArray,
     initial_previous_state: npt.NDArray = None,
     options: ProgramOptions = None,
-) -> T.List[T.List[npt.NDArray]]:
+) -> T.Tuple[T.List[T.List[npt.NDArray]], T.List[DualVertex]]:
     """
     K-step lookahead rollout policy.
     If you reach a point from which no action is available --
@@ -496,7 +498,7 @@ def lookahead_with_backtracking_policy(
 
     while not found_target:
         if decision_index == -1:
-            return None
+            return None, None
         if decision_options[decision_index].empty():
             decision_index -= 1
         else:
@@ -544,11 +546,11 @@ def lookahead_with_backtracking_policy(
                     np.round((cost_before / cost_after - 1) * 100, 1),
                     "% worse",
                 )
-        return full_path
+        return full_path, target_node.vertex_path_so_far
         
     else:
         WARN("no path from start vertex to target!")
-        return None
+        return None, None
     
 
 def cheap_a_star_policy(
@@ -557,7 +559,7 @@ def cheap_a_star_policy(
     initial_state: npt.NDArray,
     initial_previous_state: npt.NDArray = None,
     options: ProgramOptions = None,
-) -> T.List[T.List[npt.NDArray]]:
+) -> T.Tuple[T.List[T.List[npt.NDArray]], T.List[DualVertex]]:
     """
     K-step lookahead rollout policy.
     If you reach a point from which no action is available --
@@ -625,12 +627,35 @@ def cheap_a_star_policy(
                     np.round((cost_before / cost_after - 1) * 100, 1),
                     "% worse",
                 )
-        return full_path
+        return full_path, target_node.vertex_path_so_far
         
     else:
         WARN("no path from start vertex to target!")
-        return None
+        return None, None
            
+
+def obtain_rollout(
+    gcs: PolynomialDualGCS,
+    lookahead: int,
+    vertex: DualVertex,
+    state: npt.NDArray,
+    last_state: npt.NDArray = None
+) -> T.Tuple[T.List[T.List[npt.NDArray]], T.List[DualVertex], float]:
+    options = gcs.options
+    gcs.options.policy_lookahead = lookahead
+    options.policy_lookahead = lookahead
+    gcs.options.vertify_options_validity()
+
+    timer = timeit()
+    if options.use_lookahead_policy:
+        rollout_path, v_path = lookahead_policy(gcs, vertex, state, last_state, options)
+    elif options.use_lookahead_with_backtracking_policy:
+        rollout_path, v_path = lookahead_with_backtracking_policy(gcs, vertex, state, last_state, options)
+    elif options.use_cheap_a_star_policy:
+        rollout_path, v_path = cheap_a_star_policy(gcs, vertex, state, last_state, options)
+    dt = timer.dt(print_stuff = False)
+    return rollout_path, v_path, dt
+
 
 def plot_optimal_and_rollout(
     fig: go.Figure,
@@ -651,19 +676,13 @@ def plot_optimal_and_rollout(
     rollout the policy from the initial condition, plot it out on a given figure`
     return whether the problem solved successfully + how long it took to solve for the tajectory.
     """
+    # TODO: drop this, this is repeated
     options = gcs.options
     gcs.options.policy_lookahead = lookahead
     options.policy_lookahead = lookahead
     options.vertify_options_validity()
 
-    timer = timeit()
-    if options.use_lookahead_policy:
-        rollout_path = lookahead_policy(gcs, vertex, state, last_state, options)
-    elif options.use_lookahead_with_backtracking_policy:
-        rollout_path = lookahead_with_backtracking_policy(gcs, vertex, state, last_state, options)
-    elif options.use_cheap_a_star_policy:
-        rollout_path = cheap_a_star_policy(gcs, vertex, state, last_state, options)
-    dt = timer.dt(print_stuff = False)
+    rollout_path, _, dt = obtain_rollout(gcs, lookahead, vertex, state, last_state)
 
     if rollout_path is None:
         return False, dt

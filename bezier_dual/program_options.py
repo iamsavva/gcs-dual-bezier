@@ -79,7 +79,9 @@ class ProgramOptions:
         # as of now, only used for computing optimal solutions.
         self.gcs_policy_use_convex_relaxation = False
         self.gcs_policy_max_rounding_trials = 30
+        self.gcs_policy_max_rounded_paths = 100
         self.gcs_policy_use_preprocessing = True
+
 
         
         
