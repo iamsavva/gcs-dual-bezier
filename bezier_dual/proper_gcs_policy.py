@@ -315,7 +315,7 @@ def get_optimal_path(
     result = regular_gcs.SolveShortestPath(
         start_vertex, terminal_vertex, gcs_options
     )  # type: MathematicalProgramResult
-    dt = timer.dt()
+    dt = timer.dt(print_stuff=False)
     assert result.is_success()
     cost = result.get_optimal_cost()
 
