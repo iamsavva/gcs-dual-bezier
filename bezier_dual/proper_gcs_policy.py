@@ -551,7 +551,8 @@ def lookahead_with_backtracking_policy(
     else:
         WARN("no path from start vertex to target!")
         return None, None
-    
+
+
 
 def cheap_a_star_policy(
     gcs: PolynomialDualGCS,
@@ -591,6 +592,7 @@ def cheap_a_star_policy(
                 gcs, options.policy_lookahead, node.vertex_now, node.vertex_path_so_far
             )
             # for every path -- solve convex restriction, add next states
+            # print(len(vertex_paths))
             for vertex_path in vertex_paths:
                 cost, bezier_curves = solve_convex_restriction(gcs, vertex_path, node.state_now, node.state_last, options)
                 num_times_solved_convex_restriction += 1
@@ -602,6 +604,8 @@ def cheap_a_star_policy(
                     add_terminal_heuristic = not options.policy_use_zero_heuristic
                     cost_of_path = get_path_cost(gcs, next_node.vertex_path_so_far, next_node.bezier_path_so_far, add_edge_and_vertex_violations, add_terminal_heuristic)
                     que.put( (cost_of_path, next_node) )
+                else:
+                    WARN("failed to solve")
 
     if options.policy_verbose_number_of_restrictions_solves:
         INFO("solved the convex restriction", num_times_solved_convex_restriction, "of times")

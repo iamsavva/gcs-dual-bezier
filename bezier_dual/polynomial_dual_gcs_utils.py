@@ -202,3 +202,17 @@ def define_sos_constraint_over_polyhedron(
         lambda_2_right,
         lambda_2_left_right,
     )
+
+
+## storign and extracting lists into yaml files
+import yaml
+def store_it(num, trajectory):
+    # Store the list into a YAML file
+    with open("a_few_trajectories/traj" + str(num) + ".yaml", "w") as yaml_file:
+        yaml.dump(trajectory, yaml_file)
+
+def extract(file_name:str):
+    # Extract the list back from the YAML file
+    with open(file_name, "r") as yaml_file:
+        extracted_list = yaml.load(yaml_file, Loader=yaml.FullLoader)
+    return extracted_list

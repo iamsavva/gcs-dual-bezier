@@ -10,6 +10,23 @@ directives:
         iiwa_joint_5: [0]
         iiwa_joint_6: [1.6]
         iiwa_joint_7: [0]
+
 - add_weld:
     parent: world
     child: iiwa::iiwa_link_0
+
+- add_directives:
+    file: package://manipulation/two_bins.dmd.yaml
+
+# - add_model:
+#     name: foam_brick1
+#     file: package://manipulation/hydro/061_foam_brick.sdf
+#     default_free_body_pose:
+#         base_link:
+#             translation: [-0.17, -0.6, 0.05]
+# - add_model:
+#     name: foam_brick2
+#     file: package://manipulation/hydro/061_foam_brick.sdf
+#     default_free_body_pose:
+#         base_link:
+#             translation: [-0.18, -0.5, 0.05]

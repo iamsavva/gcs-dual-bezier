@@ -40,10 +40,12 @@ def get_parser(plant: MultibodyPlant) -> Parser:
     """Creates a parser for a plant and adds package paths to it."""
     parser = Parser(plant)
     return parser
+import os
 
 from pydrake.trajectories import Trajectory, BezierCurve, CompositeTrajectory, PathParameterizedTrajectory # pylint: disable=import-error, no-name-in-module, unused-import
 from pydrake.multibody.optimization import Toppra # pylint: disable=import-error, no-name-in-module, unused-import
 
+from manipulation.utils import ConfigureParser
 
 @dataclass
 class ArmComponents:
@@ -78,6 +80,12 @@ def create_arm(
     builder = DiagramBuilder()
     plant, scene_graph = AddMultibodyPlantSceneGraph(builder, time_step)
     parser = get_parser(plant)
+    ConfigureParser(parser)
+    parser.package_map().AddPackageXml(filename=os.path.abspath("package.xml"))
+
+    # parser.AddModelsFromUrl(
+    #     "package://manipulation/schunk_wsg_50_welded_fingers.sdf"
+    # )
 
     # Add arm
     parser.AddModels(arm_file_path)
@@ -189,10 +197,17 @@ def make_path_paramed_traj_from_list_of_bezier_curves(list_of_list_of_lists: T.L
 
 
 
-def visualize_a_trajectory(solution: T.List[T.List[npt.NDArray]], arm_components: ArmComponents = None, num_timesteps = 1000):
+def visualize_a_trajectory(solution: T.List[T.List[npt.NDArray]], arm_components: ArmComponents = None, num_timesteps = 1000, with_shunk:bool = True, debug_t_start:float=None, debug_t_end:float=None):
+    if debug_t_start is None:
+        debug_t_start = 100
+    if debug_t_end is None:
+        debug_t_end = -1
     # Create arm
     if arm_components is None:
-        arm_components = create_arm()
+        if with_shunk:
+            arm_components = create_arm(arm_file_path="./iiwa7_with_wsg.dmd.yaml")
+        else:
+            arm_components = create_arm(arm_file_path="./iiwa.dmd.yaml")
 
     simulator = Simulator(arm_components.diagram)
     simulator.set_target_realtime_rate(1.0)
@@ -219,9 +234,58 @@ def visualize_a_trajectory(solution: T.List[T.List[npt.NDArray]], arm_components
         q_dot_numeric,
         sample_times_s
     ):
+        if debug_t_start <= t and t <= debug_t_end:
+            print(q)
         arm_components.plant.SetPositions(plant_context, q)
         arm_components.plant.SetVelocities(plant_context, q_dot) 
         simulator.AdvanceTo(t)
+
+    arm_components.meshcat_visualizer.StopRecording()
+    arm_components.meshcat_visualizer.PublishRecording()
+
+def visualize_a_trajectory_empty(arm_components: ArmComponents = None, with_shunk = True):
+    # Create arm
+    if arm_components is None:
+        if with_shunk:
+            arm_components = create_arm(arm_file_path="./iiwa7_with_wsg.dmd.yaml")
+        else:
+            arm_components = create_arm(arm_file_path="./iiwa.dmd.yaml")
+
+    simulator = Simulator(arm_components.diagram)
+    simulator.set_target_realtime_rate(1.0)
+
+    context = simulator.get_mutable_context()
+    plant_context = arm_components.plant.GetMyContextFromRoot(context)
+
+    arm_components.meshcat_visualizer.StartRecording()
+    state = np.zeros(7)
+
+    arm_components.plant.SetPositions(plant_context, state)
+    simulator.AdvanceTo(0)
+    arm_components.plant.SetPositions(plant_context, state)
+
+    arm_components.meshcat_visualizer.StopRecording()
+    arm_components.meshcat_visualizer.PublishRecording()
+
+
+def visualize_a_trajectory_at_state(state:npt.NDArray, arm_components: ArmComponents = None, with_shunk = True):
+    # Create arm
+    if arm_components is None:
+        if with_shunk:
+            arm_components = create_arm(arm_file_path="./iiwa7_with_wsg.dmd.yaml")
+        else:
+            arm_components = create_arm(arm_file_path="./iiwa.dmd.yaml")
+
+    simulator = Simulator(arm_components.diagram)
+    simulator.set_target_realtime_rate(1.0)
+
+    context = simulator.get_mutable_context()
+    plant_context = arm_components.plant.GetMyContextFromRoot(context)
+
+    arm_components.meshcat_visualizer.StartRecording()
+    arm_components.plant.SetPositions(plant_context, state)
+    simulator.AdvanceTo(0)
+    arm_components.plant.SetPositions(plant_context, state)
 
     arm_components.meshcat_visualizer.StopRecording()
     arm_components.meshcat_visualizer.PublishRecording()
