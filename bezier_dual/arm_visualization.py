@@ -58,7 +58,7 @@ class ArmComponents:
     trajectory_source: TrajectorySource
     meshcat: Meshcat
     meshcat_visualizer: MeshcatVisualizer
-
+    
 
 def create_arm(
     arm_file_path: str = "./iiwa.dmd.yaml",
@@ -81,7 +81,7 @@ def create_arm(
     plant, scene_graph = AddMultibodyPlantSceneGraph(builder, time_step)
     parser = get_parser(plant)
     ConfigureParser(parser)
-    parser.package_map().AddPackageXml(filename=os.path.abspath("package.xml"))
+    parser.package_map().AddPackageXml(filename=os.path.abspath("./models/package.xml"))
 
     # parser.AddModelsFromUrl(
     #     "package://manipulation/schunk_wsg_50_welded_fingers.sdf"
@@ -155,6 +155,17 @@ def create_arm(
         meshcat_visualizer=meshcat_visualizer,
     )
 
+def scenario_loader(arm_components: ArmComponents = None, 
+                    use_rohan_scenario:bool = False,
+                    use_meshcat:bool = True
+                    ):
+    if arm_components is None:
+        if use_rohan_scenario:
+            arm_components = create_arm(arm_file_path="./models/iiwa14_rohan.dmd.yaml", use_meshcat=use_meshcat)
+        else:
+            arm_components = create_arm(arm_file_path="./models/iiwa14_david.dmd.yaml", use_meshcat=use_meshcat)
+    return arm_components
+
 
 def reparameterize_with_toppra(
     trajectory: Trajectory,
@@ -197,17 +208,17 @@ def make_path_paramed_traj_from_list_of_bezier_curves(list_of_list_of_lists: T.L
 
 
 
-def visualize_a_trajectory(solution: T.List[T.List[npt.NDArray]], arm_components: ArmComponents = None, num_timesteps = 1000, with_shunk:bool = True, debug_t_start:float=None, debug_t_end:float=None):
+def visualize_a_trajectory(solution: T.List[T.List[npt.NDArray]], 
+                           arm_components: ArmComponents = None, 
+                           num_timesteps = 1000, 
+                           use_rohan_scenario:bool = True, 
+                           debug_t_start:float=None, debug_t_end:float=None):
     if debug_t_start is None:
         debug_t_start = 100
     if debug_t_end is None:
         debug_t_end = -1
     # Create arm
-    if arm_components is None:
-        if with_shunk:
-            arm_components = create_arm(arm_file_path="./iiwa7_with_wsg.dmd.yaml")
-        else:
-            arm_components = create_arm(arm_file_path="./iiwa.dmd.yaml")
+    arm_components = scenario_loader(arm_components, use_rohan_scenario)
 
     simulator = Simulator(arm_components.diagram)
     simulator.set_target_realtime_rate(1.0)
@@ -243,38 +254,10 @@ def visualize_a_trajectory(solution: T.List[T.List[npt.NDArray]], arm_components
     arm_components.meshcat_visualizer.StopRecording()
     arm_components.meshcat_visualizer.PublishRecording()
 
-def visualize_a_trajectory_empty(arm_components: ArmComponents = None, with_shunk = True):
+
+def visualize_arm_at_state(state:npt.NDArray, arm_components: ArmComponents = None, use_rohan_scenario = False):
     # Create arm
-    if arm_components is None:
-        if with_shunk:
-            arm_components = create_arm(arm_file_path="./iiwa7_with_wsg.dmd.yaml")
-        else:
-            arm_components = create_arm(arm_file_path="./iiwa.dmd.yaml")
-
-    simulator = Simulator(arm_components.diagram)
-    simulator.set_target_realtime_rate(1.0)
-
-    context = simulator.get_mutable_context()
-    plant_context = arm_components.plant.GetMyContextFromRoot(context)
-
-    arm_components.meshcat_visualizer.StartRecording()
-    state = np.zeros(7)
-
-    arm_components.plant.SetPositions(plant_context, state)
-    simulator.AdvanceTo(0)
-    arm_components.plant.SetPositions(plant_context, state)
-
-    arm_components.meshcat_visualizer.StopRecording()
-    arm_components.meshcat_visualizer.PublishRecording()
-
-
-def visualize_a_trajectory_at_state(state:npt.NDArray, arm_components: ArmComponents = None, with_shunk = True):
-    # Create arm
-    if arm_components is None:
-        if with_shunk:
-            arm_components = create_arm(arm_file_path="./iiwa7_with_wsg.dmd.yaml")
-        else:
-            arm_components = create_arm(arm_file_path="./iiwa.dmd.yaml")
+    arm_components = scenario_loader(arm_components, use_rohan_scenario)
 
     simulator = Simulator(arm_components.diagram)
     simulator.set_target_realtime_rate(1.0)
@@ -289,3 +272,7 @@ def visualize_a_trajectory_at_state(state:npt.NDArray, arm_components: ArmCompon
 
     arm_components.meshcat_visualizer.StopRecording()
     arm_components.meshcat_visualizer.PublishRecording()
+
+
+def visualize_arm_at_init(arm_components: ArmComponents = None, use_rohan_scenario = False):
+    visualize_arm_at_state(np.zeros(7), arm_components, use_rohan_scenario)
