@@ -1,14 +1,13 @@
 from typing import Any, Dict, Optional, Sequence, Union
 
 import numpy as np
-from pydrake.math import RigidTransform, RotationMatrix
-from pydrake.multibody.inverse_kinematics import InverseKinematics
+from pydrake.math import RigidTransform, RotationMatrix # pylint: disable=import-error, no-name-in-module
+from pydrake.multibody.inverse_kinematics import InverseKinematics # pylint: disable=import-error, no-name-in-module
 
 from arm_visualization import create_arm, scenario_loader
 
-from pydrake.solvers import (
+from pydrake.solvers import ( # pylint: disable=import-error, no-name-in-module
     Solve,
-    SolverOptions,
 )
 
 def compute_inverse_kinematics(q0: Sequence, 

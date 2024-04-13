@@ -69,6 +69,7 @@ from polynomial_dual_gcs_utils import (
 
 from bezier_dual import QUADRATIC_COST, PolynomialDualGCS, DualEdge, DualVertex
 from plot_utils import plot_bezier
+from solve_restriction import solve_convex_restriction, get_optimal_path, get_path_cost, solve_parallelized_convex_restriction
 
 
 def get_all_n_step_paths(
@@ -154,184 +155,6 @@ def get_all_n_step_vertices_and_edges(
     return vertices, edges
 
 
-
-# ---------------------------------------------------------------------
-# ---------------------------------------------------------------------
-# ---------------------------------------------------------------------
-
-
-def solve_convex_restriction(
-    graph: PolynomialDualGCS,
-    vertex_path: T.List[DualVertex],
-    state_now: npt.NDArray,
-    state_last: npt.NDArray = None,
-    options: ProgramOptions = None,
-    verbose_failure=False,
-) -> T.Tuple[float, T.List[T.List[npt.NDArray]]]:
-    """
-    solve a convex restriction over a vertex path
-    return cost of the vertex_path
-    and return a list of bezier curves
-    where bezier curve is a list of numpy arrays (vectors).
-    """
-    if options is None:
-        options = graph.options
-
-    # construct an optimization problem
-    prog = MathematicalProgram()
-    # initial state
-    last_x = prog.NewContinuousVariables(vertex_path[0].state_dim)
-    prog.AddLinearConstraint(eq(last_x, state_now))
-    # previous direction of motion -- for bezier curve continuity
-    last_delta = None
-    if state_last is not None:
-        last_delta = last_x - state_last
-
-    bezier_curves = []
-    # for every vertex:
-    for i, vertex in enumerate(vertex_path):
-        # it's the last vertex -- don't add a bezier curve; add terminal cost instead
-        if i == len(vertex_path) - 1:
-            # if using terminal heuristic cost:
-            if not options.policy_use_zero_heuristic:
-                potential = graph.value_function_solution.GetSolution(vertex.potential)
-                f_potential = lambda x: potential.Substitute(
-                    {vertex.x[i]: x[i] for i in range(vertex.state_dim)}
-                )
-                prog.AddCost(f_potential(last_x))
-
-            # assert that next control point is feasible -- for bezier curve continuity
-            if not vertex.vertex_is_target:
-                prog.AddLinearConstraint(ge(vertex.B.dot(np.hstack(([1], last_x + last_delta))), 0))
-
-        else:
-            bezier_curve = [last_x]
-            edge = graph.edges[get_edge_name(vertex.name, vertex_path[i + 1].name)]
-            for j in range(1, options.num_control_points):
-                # add a new knot point
-                x_j = prog.NewContinuousVariables(vertex.state_dim)
-                bezier_curve.append(x_j)
-                # knot point inside a set
-                if j == options.num_control_points - 1:
-                    # inside the intersection
-                    prog.AddLinearConstraint(ge(edge.B_intersection.dot(np.hstack(([1], x_j))), 0))
-                else:
-                    # inside the vertex
-                    prog.AddLinearConstraint(ge(vertex.B.dot(np.hstack(([1], x_j))), 0))
-
-                # quadratic cost with previous point
-                prog.AddQuadraticCost(edge.cost_function(last_x, x_j))
-
-                # if the point is the first knot point in this set -- add the bezier continuity constraint
-                if j == 1 and last_delta is not None:
-                    prog.AddLinearConstraint(eq(x_j - last_x, last_delta))
-
-                # we just added the last point, store last_delta
-                if j == options.num_control_points - 1:
-                    last_delta = x_j - last_x
-                last_x = x_j
-            # store the bezier curve
-            bezier_curves.append(bezier_curve)
-
-        # on all but the initial vertex:
-        if i > 0:
-            # add flow violation penalty.
-            # only do so so far as we are using heuristic values
-            if options.policy_add_violation_penalties and not options.policy_use_zero_heuristic:
-                edge = graph.edges[get_edge_name(vertex_path[i-1].name, vertex.name)]
-                vcost = graph.value_function_solution.GetSolution(edge.bidirectional_edge_violation)
-                vcost += graph.value_function_solution.GetSolution(vertex.total_flow_in_violation)
-                prog.AddLinearCost(vcost)
-
-            # NOTE: add the G term. 
-            # NOTE: this will make the problem non-convex
-            # TODO: is this is a hack or genuinly useful.
-            if options.policy_add_G_term:
-                G_matrix = graph.value_function_solution.GetSolution(vertex.G_matrix)
-                def eval_G(x):
-                    x_and_1 = np.hstack(([1], x))
-                    return x_and_1.dot(G_matrix).dot(x_and_1)
-                prog.AddCost(eval_G(last_delta))
-
-    if options.solve_with_snopt:
-        solver = SnoptSolver()
-        solution = solver.Solve(prog)
-    elif options.solve_with_mosek:
-        solver = MosekSolver()
-        solution = solver.Solve(prog)
-    elif options.solve_with_gurobi:
-        solver = GurobiSolver()
-        solution = solver.Solve(prog)
-    elif options.solve_with_osqp:
-        solver = OsqpSolver()
-        solution = solver.Solve(prog)
-    elif options.solve_with_clarabel:
-        solver = ClarabelSolver()
-        solution = solver.Solve(prog)
-    else:
-        solution = Solve(prog)
-    if solution.is_success():
-        optimization_cost = solution.get_optimal_cost()
-        # bezier_solutions = [solution.GetSolution(bezier_curve) for bezier_curve in bezier_curves]
-        bezier_solutions = [[solution.GetSolution(control_point) for control_point in bezier_curve] for bezier_curve in bezier_curves]
-        return optimization_cost, bezier_solutions
-    else:
-        if verbose_failure:
-            diditwork(solution)
-        return np.inf, []
-
-
-# ---
-
-
-def get_optimal_path(
-    gcs: PolynomialDualGCS,
-    vertex: DualVertex,
-    state: npt.NDArray,
-    options: ProgramOptions = None
-) -> T.Tuple[float, float, T.List[T.List[npt.NDArray]], T.List[DualVertex]]:
-    """
-    return (time, cost, bezier path, vertex path) of the optimal solution.
-    """
-    if options is None:
-        options = gcs.options
-
-    k = options.num_control_points
-    regular_gcs, vertices, terminal_vertex = gcs.export_a_gcs()
-    start_vertex = vertices[vertex.name]
-    first_point = get_kth_control_point(start_vertex.x(), 0, k)
-    cons = eq(first_point, state)
-    for con in cons:
-        start_vertex.AddConstraint( con )
-
-    gcs_options = GraphOfConvexSetsOptions()
-    gcs_options.convex_relaxation = options.gcs_policy_use_convex_relaxation
-    gcs_options.max_rounding_trials = options.gcs_policy_max_rounding_trials
-    gcs_options.preprocessing = options.gcs_policy_use_preprocessing
-    gcs_options.max_rounded_paths = options.gcs_policy_max_rounded_paths
-
-    # solve
-    timer = timeit()
-    result = regular_gcs.SolveShortestPath(
-        start_vertex, terminal_vertex, gcs_options
-    )  # type: MathematicalProgramResult
-    dt = timer.dt(print_stuff=False)
-    assert result.is_success()
-    cost = result.get_optimal_cost()
-
-    edge_path = regular_gcs.GetSolutionPath(start_vertex, terminal_vertex, result)
-    vertex_name_path = []
-    value_path = []
-    for e in edge_path[:-1]:
-        vertex_name_path.append(e.u().name())
-        full_curve = result.GetSolution(e.u().x())
-        split_up_curve = full_curve.reshape( (k, vertex.state_dim) )
-        value_path.append([x for x in split_up_curve])
-    vertex_name_path.append(edge_path[-1].u().name())
-        
-    return dt, cost, value_path, [gcs.vertices[name] for name in vertex_name_path]
-
-
 def get_k_step_optimal_path(
     gcs: PolynomialDualGCS,
     vertex: DualVertex,
@@ -362,31 +185,6 @@ def get_k_step_optimal_path(
         print("----")
     return best_cost, best_path, best_vertex_path
 
-
-def get_path_cost(
-    graph: PolynomialDualGCS,
-    vertex_path: T.List[DualVertex],
-    bezier_path: T.List[T.List[npt.NDArray]],
-    add_edge_and_vertex_violations:bool = True,
-    add_terminal_heuristic:bool = True,
-) -> float:
-    """
-    Note: this is cost of the full path with the terminal cost
-    TODO: should i do the add G term heiuristic?
-    """
-    cost = 0.0
-    for index, bezier_curve in enumerate(bezier_path):
-        edge = graph.edges[get_edge_name(vertex_path[index].name, vertex_path[index + 1].name)]
-        for i in range(len(bezier_curve) - 1):
-            cost += edge.cost_function(bezier_curve[i], bezier_curve[i + 1])
-        if add_edge_and_vertex_violations:
-            violations = graph.value_function_solution.GetSolution(edge.bidirectional_edge_violation) + graph.value_function_solution.GetSolution(edge.right.total_flow_in_violation)
-            if isinstance(violations, Expression):
-                violations = violations.Evaluate()
-            cost += violations
-        if add_terminal_heuristic and (index == len(bezier_path) - 1):
-            cost += vertex_path[-1].cost_at_point(bezier_curve[-1], graph.value_function_solution)
-    return cost
 
 class Node:
     def __init__(self, vertex_now: DualVertex, state_now:npt.NDArray, state_last:npt.NDArray, bezier_path_so_far:T.List[T.List[npt.NDArray]], vertex_path_so_far:T.List[DualVertex]):
@@ -636,6 +434,93 @@ def cheap_a_star_policy(
     else:
         WARN("no path from start vertex to target!")
         return None, None
+    
+
+def cheap_a_star_policy_parallelized(
+    gcs: PolynomialDualGCS,
+    vertex: DualVertex,
+    initial_state: npt.NDArray,
+    initial_previous_state: npt.NDArray = None,
+    options: ProgramOptions = None,
+) -> T.Tuple[T.List[T.List[npt.NDArray]], T.List[DualVertex]]:
+    """
+    K-step lookahead rollout policy.
+    If you reach a point from which no action is available --
+    -- backtrack to the last state when some action was available.
+    Returns a list of bezier curves. Each bezier curve is a list of control points (numpy arrays).
+    """
+    timer = timeit()
+    if options is None:
+        options = gcs.options
+    options.vertify_options_validity()
+
+    # cost, current state, last state, current vertex, state path so far, vertex path so far
+    que = PriorityQueue()
+    que.put( (0.0, Node(vertex, initial_state, initial_previous_state, [], [vertex]) ) )
+    num_times_solved_convex_restriction = 0
+
+
+    found_target = False
+    target_node = None # type: Node
+
+    timer.dt("start up")
+    while not found_target:
+        
+        node = que.get()[1] # type: Node
+        if node.vertex_now.vertex_is_target:
+            found_target = True
+            target_node = node
+            break
+        else:
+            vertex_paths = get_all_n_step_paths_no_revisits(
+                gcs, options.policy_lookahead, node.vertex_now, node.vertex_path_so_far
+            )
+            # for every path -- solve convex restriction, add next states
+            # print(len(vertex_paths))
+            timer = timeit()
+            solutions = solve_parallelized_convex_restriction(gcs, vertex_paths, node.state_now, node.state_last, options)
+            timer.dt("solving")
+            num_times_solved_convex_restriction += 1
+            for (vertex_path, bezier_curves) in solutions:
+                next_node = node.extend(bezier_curves[0], vertex_path[1])
+                # evaluate the cost
+                add_edge_and_vertex_violations = options.policy_add_violation_penalties and not options.policy_use_zero_heuristic
+                add_terminal_heuristic = not options.policy_use_zero_heuristic
+                cost_of_path = get_path_cost(gcs, next_node.vertex_path_so_far, next_node.bezier_path_so_far, add_edge_and_vertex_violations, add_terminal_heuristic)
+                que.put( (cost_of_path, next_node) )
+            timer.dt("quing")
+
+    if options.policy_verbose_number_of_restrictions_solves:
+        INFO("solved the convex restriction", num_times_solved_convex_restriction, "of times")
+
+
+    if found_target:
+        timer = timeit()
+        if options.verbose_restriction_improvement:
+            cost_before = get_path_cost(gcs, target_node.vertex_path_so_far, target_node.bezier_path_so_far, False, True)
+
+        full_path = target_node.bezier_path_so_far
+        # solve a convex restriction on the vertex sequence
+        if options.postprocess_by_solving_restriction_on_mode_sequence:
+            _, full_path = solve_convex_restriction(gcs, target_node.vertex_path_so_far, initial_state, initial_previous_state, options)
+            # verbose
+            if options.verbose_restriction_improvement:
+                cost_after = get_path_cost(gcs, target_node.vertex_path_so_far, full_path, False, True)
+                INFO(
+                    "path cost improved from",
+                    np.round(cost_before, 1),
+                    "to",
+                    np.round(cost_after, 1),
+                    "; original is",
+                    np.round((cost_before / cost_after - 1) * 100, 1),
+                    "% worse",
+                )
+        timer.dt("one last solve")
+        return full_path, target_node.vertex_path_so_far
+        
+    else:
+        WARN("no path from start vertex to target!")
+        return None, None
            
 
 def obtain_rollout(
@@ -657,6 +542,9 @@ def obtain_rollout(
         rollout_path, v_path = lookahead_with_backtracking_policy(gcs, vertex, state, last_state, options)
     elif options.use_cheap_a_star_policy:
         rollout_path, v_path = cheap_a_star_policy(gcs, vertex, state, last_state, options)
+    elif options.use_cheap_a_star_policy_parallelized:
+        rollout_path, v_path = cheap_a_star_policy_parallelized(gcs, vertex, state, last_state, options)
+        
     dt = timer.dt(print_stuff = False)
     return rollout_path, v_path, dt
 

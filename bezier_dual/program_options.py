@@ -60,15 +60,12 @@ class ProgramOptions:
         self.use_lookahead_policy = False
         self.use_lookahead_with_backtracking_policy = False
         self.use_cheap_a_star_policy = False
+        self.use_cheap_a_star_policy_parallelized = False
         self.policy_use_zero_heuristic = False # if you wanna use Dijkstra instead
 
         # ----------------------------------
         # solver selection for the lookaheads in the policy
-        self.solve_with_gurobi = False
-        self.solve_with_mosek = False
-        self.solve_with_snopt = False
-        self.solve_with_clarabel = False
-        self.solve_with_osqp = False
+        self.policy_solver = None
 
         self.policy_verbose_choices = False
         self.policy_verbose_number_of_restrictions_solves = False
@@ -96,11 +93,11 @@ class ProgramOptions:
             PSD_POLY,
             CONVEX_POLY,
         ), "undefined potentia type"
-        policy_options = np.array([self.use_lookahead_policy, self.use_lookahead_with_backtracking_policy, self.use_cheap_a_star_policy])
+        policy_options = np.array([self.use_lookahead_policy, self.use_lookahead_with_backtracking_policy, self.use_cheap_a_star_policy, self.use_cheap_a_star_policy_parallelized])
         assert not np.sum(policy_options) < 1, "must select policy lookahead option"
         assert not np.sum(policy_options) > 1, "selected multiple policy lookahead options"
 
-        solver_options = np.array([self.solve_with_gurobi, self.solve_with_mosek, self.solve_with_snopt, self.solve_with_clarabel, self.solve_with_osqp])
-        assert np.sum(solver_options) <= 1, "more than 1 solver option selected"
+        # solver_options = np.array([self.solve_with_gurobi, self.solve_with_mosek, self.solve_with_snopt, self.solve_with_clarabel, self.solve_with_osqp])
+        # assert np.sum(solver_options) <= 1, "more than 1 solver option selected"
 
 
