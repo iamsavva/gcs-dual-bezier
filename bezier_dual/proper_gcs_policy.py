@@ -62,10 +62,10 @@ from util import (
 )  # pylint: disable=import-error, no-name-in-module, unused-import
 
 from gcs_util import get_edge_name, make_quadratic_cost_function_matrices, plot_a_gcs
-from polynomial_dual_gcs_utils import (
-    define_quadratic_polynomial,
-    define_sos_constraint_over_polyhedron,
-)
+# from polynomial_dual_gcs_utils import (
+#     define_quadratic_polynomial,
+#     # define_sos_constraint_over_polyhedron,
+# )
 
 from bezier_dual import QUADRATIC_COST, PolynomialDualGCS, DualEdge, DualVertex
 from plot_utils import plot_bezier
@@ -161,7 +161,7 @@ def get_k_step_optimal_path(
     state: npt.NDArray,
     last_state: npt.NDArray = None,
     options: ProgramOptions = None,
-    already_visited: T.List[DualVertex] = [],
+    already_visited: T.List[DualVertex] = []
 ) -> T.Tuple[float, T.List[T.List[npt.NDArray]], T.List[DualVertex]]:
     """ 
     do not use this to compute optimal trajectories

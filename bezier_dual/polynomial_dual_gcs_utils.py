@@ -52,6 +52,7 @@ from util import (
     WARN,
     ERROR,
     ChebyshevCenter,
+    make_moment_matrix,
 )  # pylint: disable=import-error, no-name-in-module, unused-import
 
 
@@ -125,83 +126,170 @@ def define_quadratic_polynomial(
     return J_matrix, potential
 
 
-def define_sos_constraint_over_polyhedron(
+def make_potential(indet_list: npt.NDArray, options: ProgramOptions, prog: MathematicalProgram) -> T.Tuple[Expression, npt.NDArray]:
+    state_dim = len(indet_list)
+    vars_from_indet = Variables(indet_list)
+    # quadratic polynomial. special case due to convex functions and special quadratic implementations
+    if options.potential_poly_deg == 0:
+        a = np.zeros(state_dim)
+        b = prog.NewContinuousVariables(1)[0]
+        J_matrix = make_moment_matrix(b, a, np.zeros((state_dim, state_dim)))
+        potential = Expression(b)
+    if options.potential_poly_deg == 1:
+        a = prog.NewContinuousVariables(state_dim)
+        b = prog.NewContinuousVariables(1)[0]
+        J_matrix = make_moment_matrix(b, a, np.zeros((state_dim, state_dim)))
+        potential = 2 * a.dot(indet_list) + b
+    elif options.potential_poly_deg == 2:
+        J_matrix, potential = define_quadratic_polynomial(prog, indet_list, options.pot_type)
+    else:
+        J_matrix = None
+        # free polynomial
+        if options.pot_type == FREE_POLY:
+            potential = prog.NewFreePolynomial(
+                vars_from_indet, options.potential_poly_deg
+            ).ToExpression()
+        # PSD polynomial
+        elif options.pot_type == PSD_POLY:
+            assert (
+                options.potential_poly_deg % 2 == 0
+            ), "can't make a PSD potential of uneven degree"
+            # potential is PSD polynomial
+            potential = prog.NewSosPolynomial(vars_from_indet, options.potential_poly_deg)[0].ToExpression()
+        else:
+            raise NotImplementedError("potential type not supported")
+    return potential, J_matrix
+
+
+# def define_sos_constraint_over_polyhedron(
+#     prog: MathematicalProgram,
+#     left_vars: npt.NDArray,
+#     right_vars: npt.NDArray,
+#     function: Expression,
+#     B_left: npt.NDArray,
+#     B_right: npt.NDArray,
+#     options: ProgramOptions
+# ):
+
+#     s_procedure = Expression(0)
+
+#     x_and_1 = np.hstack(([1], left_vars))
+#     y_and_1 = np.hstack(([1], right_vars))
+
+#     Bl = B_left
+#     Br = B_right
+
+#     # deg 0
+#     lambda_0 = prog.NewContinuousVariables(1)[0]
+#     prog.AddLinearConstraint(lambda_0 >= 0)
+#     s_procedure += lambda_0
+
+#     # deg 1
+#     deg_1_cons_l = Bl.dot(x_and_1)
+#     deg_1_cons_r = Br.dot(y_and_1)
+#     deg1 = options.s_procedure_multiplier_degree_for_linear_inequalities
+#     if deg1 == 0:
+#         lambda_1_left = prog.NewContinuousVariables(len(deg_1_cons_l))
+#         lambda_1_right = prog.NewContinuousVariables(len(deg_1_cons_r))
+#         prog.AddLinearConstraint(ge(lambda_1_left, 0))
+#         prog.AddLinearConstraint(ge(lambda_1_right, 0))
+#     else:
+#         xy_vars = Variables(np.hstack((left_vars, right_vars)))
+#         lambda_1_left = [
+#             prog.NewSosPolynomial(xy_vars, deg1)[0].ToExpression()
+#             for _ in range(len(deg_1_cons_l))
+#         ]
+#         lambda_1_right = [
+#             prog.NewSosPolynomial(xy_vars, deg1)[0].ToExpression()
+#             for _ in range(len(deg_1_cons_r))
+#         ]
+        
+#     s_procedure += deg_1_cons_l.dot(lambda_1_left) + deg_1_cons_r.dot(lambda_1_right)
+
+#     # deg 2
+#     if options.s_procedure_use_quadratic_multilpiers:
+#         lambda_2_left = prog.NewSymmetricContinuousVariables(len(deg_1_cons_l))
+#         lambda_2_right = prog.NewSymmetricContinuousVariables(len(deg_1_cons_r))
+#         prog.AddLinearConstraint(ge(lambda_2_left, 0))
+#         prog.AddLinearConstraint(ge(lambda_2_right, 0))
+#         s_procedure += np.sum((Bl.dot(np.outer(x_and_1, x_and_1)).dot(Bl.T)) * lambda_2_left)
+#         s_procedure += np.sum((Br.dot(np.outer(y_and_1, y_and_1)).dot(Br.T)) * lambda_2_right)
+
+#         if options.s_procedure_quadratic_multiply_left_and_right:
+#             lambda_2_left_right = prog.NewContinuousVariables(len(deg_1_cons_l), len(deg_1_cons_r))
+#             prog.AddLinearConstraint(ge(lambda_2_left_right, 0))
+#             the_product = (Bl.dot(np.outer(x_and_1, y_and_1)).dot(Br.T)) # type: npt.NDArray
+#             assert the_product.shape == lambda_2_left_right.shape
+#             s_procedure += np.sum(the_product * lambda_2_left_right)
+#         else:
+#             lambda_2_left_right = []
+#     else:
+#         lambda_2_left = []
+#         lambda_2_right = []
+#         lambda_2_left_right = []
+
+        
+#     expr = function - s_procedure
+#     prog.AddSosConstraint(expr)
+
+#     return (
+#         lambda_0,
+#         lambda_1_left,
+#         lambda_1_right,
+#         lambda_2_left,
+#         lambda_2_right,
+#         lambda_2_left_right,
+#     )
+
+
+def define_sos_constraint_over_polyhedron_multivar(
     prog: MathematicalProgram,
-    left_vars: npt.NDArray,
-    right_vars: npt.NDArray,
+    list_of_vars: T.List[npt.NDArray],
+    B_matrices: T.List[npt.NDArray],
     function: Expression,
-    B_left: npt.NDArray,
-    B_right: npt.NDArray,
     options: ProgramOptions
-):
-
+) -> None:
     s_procedure = Expression(0)
-
-    x_and_1 = np.hstack(([1], left_vars))
-    y_and_1 = np.hstack(([1], right_vars))
-
-    Bl = B_left
-    Br = B_right
-
     # deg 0
     lambda_0 = prog.NewContinuousVariables(1)[0]
     prog.AddLinearConstraint(lambda_0 >= 0)
     s_procedure += lambda_0
 
+    all_variables = Variables(np.array(list_of_vars).flatten())
+
     # deg 1
-    deg_1_cons_l = Bl.dot(x_and_1)
-    deg_1_cons_r = Br.dot(y_and_1)
     deg1 = options.s_procedure_multiplier_degree_for_linear_inequalities
-    if deg1 == 0:
-        lambda_1_left = prog.NewContinuousVariables(len(deg_1_cons_l))
-        lambda_1_right = prog.NewContinuousVariables(len(deg_1_cons_r))
-        prog.AddLinearConstraint(ge(lambda_1_left, 0))
-        prog.AddLinearConstraint(ge(lambda_1_right, 0))
-    else:
-        xy_vars = Variables(np.hstack((left_vars, right_vars)))
-        lambda_1_left = [
-            prog.NewSosPolynomial(xy_vars, deg1)[0].ToExpression()
-            for _ in range(len(deg_1_cons_l))
-        ]
-        lambda_1_right = [
-            prog.NewSosPolynomial(xy_vars, deg1)[0].ToExpression()
-            for _ in range(len(deg_1_cons_r))
-        ]
-        
-    s_procedure += deg_1_cons_l.dot(lambda_1_left) + deg_1_cons_r.dot(lambda_1_right)
+    for i, vars_i in enumerate(list_of_vars):
+        B_i = B_matrices[i]
+        x_and_1 = np.hstack(([1], vars_i))
+        deg_1_cons = B_i.dot(x_and_1)
 
-    # deg 2
-    if options.s_procedure_use_quadratic_multilpiers:
-        lambda_2_left = prog.NewSymmetricContinuousVariables(len(deg_1_cons_l))
-        lambda_2_right = prog.NewSymmetricContinuousVariables(len(deg_1_cons_r))
-        prog.AddLinearConstraint(ge(lambda_2_left, 0))
-        prog.AddLinearConstraint(ge(lambda_2_right, 0))
-        s_procedure += np.sum((Bl.dot(np.outer(x_and_1, x_and_1)).dot(Bl.T)) * lambda_2_left)
-        s_procedure += np.sum((Br.dot(np.outer(y_and_1, y_and_1)).dot(Br.T)) * lambda_2_right)
-
-        if options.s_procedure_quadratic_multiply_left_and_right:
-            lambda_2_left_right = prog.NewContinuousVariables(len(deg_1_cons_r), len(deg_1_cons_r))
-            prog.AddLinearConstraint(ge(lambda_2_left_right, 0))
-            s_procedure += np.sum((Bl.dot(np.outer(x_and_1, y_and_1)).dot(Br.T)) * lambda_2_left_right)
+        if deg1 == 0:
+            lambda_1 = prog.NewContinuousVariables(len(deg_1_cons))
+            prog.AddLinearConstraint(ge(lambda_1, 0))
         else:
-            lambda_2_left_right = []
-    else:
-        lambda_2_left = []
-        lambda_2_right = []
-        lambda_2_left_right = []
+            lambda_1 = [
+                prog.NewSosPolynomial(all_variables, deg1)[0].ToExpression()
+                for _ in range(len(deg_1_cons))
+            ]
+        s_procedure += deg_1_cons.dot(lambda_1)
 
+        # deg 2
+        if options.s_procedure_use_quadratic_multilpiers:
+            lambda_2 = prog.NewSymmetricContinuousVariables(len(deg_1_cons))
+            prog.AddLinearConstraint(ge(lambda_2, 0))
+            s_procedure += np.sum((B_i.dot(np.outer(x_and_1, x_and_1)).dot(B_i.T)) * lambda_2)
+            
+            if options.s_procedure_quadratic_multiply_left_and_right:
+                for j in range(i+1, len(list_of_vars)):
+                    B_j = B_matrices[j]
+                    y_and_1 = np.hstack(([1], list_of_vars[j]))
+                    lambda_2_left_right = prog.NewContinuousVariables(len(deg_1_cons), B_j.shape[0])
+                    prog.AddLinearConstraint(ge(lambda_2_left_right, 0))
+                    s_procedure += np.sum((B_i.dot(np.outer(x_and_1, y_and_1)).dot(B_j.T)) * lambda_2_left_right)
         
     expr = function - s_procedure
     prog.AddSosConstraint(expr)
-
-    return (
-        lambda_0,
-        lambda_1_left,
-        lambda_1_right,
-        lambda_2_left,
-        lambda_2_right,
-        lambda_2_left_right,
-    )
 
 
 ## storign and extracting lists into yaml files

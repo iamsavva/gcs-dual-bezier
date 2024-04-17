@@ -63,7 +63,9 @@ from polynomial_dual_gcs_utils import (
     get_product_constraints,
     make_linear_set_inequalities, 
     get_B_matrix,
-    define_sos_constraint_over_polyhedron
+    # define_sos_constraint_over_polyhedron,
+    make_potential,
+    define_sos_constraint_over_polyhedron_multivar
     # define_general_nonnegativity_constraint_on_a_set
 )
 
@@ -93,6 +95,7 @@ class DualVertex:
 
         # TODO: handle ellipsoids exactly
         # TODO: handle points exactly
+        
         self.convex_set = convex_set
         if isinstance(convex_set, HPolyhedron):
             self.set_type = HPolyhedron
@@ -168,39 +171,16 @@ class DualVertex:
         if specific_potential is not None:
             self.potential = specific_potential(self.x)
         else:
-            # quadratic polynomial. special case due to convex functions and special quadratic implementations
-            if self.options.potential_poly_deg == 0:
-                a = np.zeros(self.state_dim)
-                b = prog.NewContinuousVariables(1)[0]
-                self.J_matrix = make_moment_matrix(b, a, np.zeros((self.state_dim, self.state_dim)))
-                self.potential = Expression(b)
-            if self.options.potential_poly_deg == 1:
-                a = prog.NewContinuousVariables(self.state_dim)
-                b = prog.NewContinuousVariables(1)[0]
-                self.J_matrix = make_moment_matrix(b, a, np.zeros((self.state_dim, self.state_dim)))
-                self.potential = 2 * a.dot(self.x) + b
-            elif self.options.potential_poly_deg == 2:
-                self.J_matrix, self.potential = define_quadratic_polynomial(prog, self.x, self.options.pot_type)
-            else:
-                # free polynomial
-                if self.options.pot_type == FREE_POLY:
-                    self.potential = prog.NewFreePolynomial(
-                        self.vars, self.options.potential_poly_deg
-                    ).ToExpression()
-                # PSD polynomial
-                elif self.options.pot_type == PSD_POLY:
-                    assert (
-                        self.options.potential_poly_deg % 2 == 0
-                    ), "can't make a PSD potential of uneven degree"
-                    # potential is PSD polynomial
-                    self.potential = prog.NewSosPolynomial(
-                        self.vars, self.options.potential_poly_deg
-                    )[0].ToExpression()
-                else:
-                    raise NotImplementedError("potential type not supported")
+            self.potential, self.J_matrix = make_potential(self.x, self.options, prog)
 
         # define G -- the bezier curve continuity vector
         # TODO: i don't like my current implementation of G factors
+        # TODO: vertex-is_start stuff needs to be handled more carefully
+        # TODO: for start vertex stuff; might wanna do it on outgoing vertices instead.
+        # then we wouldn't care about  start 
+        # cause target no outgoing edges anyway
+        # but for start, total flow still has to be less than that
+        # CHECK THIS; might improve performance + nice for sanity
         if self.vertex_is_target or self.vertex_is_start:
             self.G_matrix = np.zeros((self.state_dim + 1, self.state_dim + 1))
             self.eval_G = lambda x: Expression(0)
@@ -333,35 +313,7 @@ class DualEdge:
 
         for k in range(self.options.num_control_points - 2):
             x = prog.NewIndeterminates(self.left.state_dim)
-            state_dim = self.left.state_dim
-
-            if self.options.potential_poly_deg == 0:
-                a = np.zeros(state_dim)
-                b = prog.NewContinuousVariables(1)[0]
-                potential = Expression(b)
-            if self.options.potential_poly_deg == 1:
-                a = prog.NewContinuousVariables(state_dim)
-                b = prog.NewContinuousVariables(1)[0]
-                potential = 2 * a.dot(x) + b
-            elif self.options.potential_poly_deg == 2:
-                potential = define_quadratic_polynomial(prog, x, self.options.pot_type)[1]
-            else:
-                # free polynomial
-                if self.options.pot_type == FREE_POLY:
-                    potential = prog.NewFreePolynomial(
-                        Variables(x), self.options.potential_poly_deg
-                    ).ToExpression()
-                # PSD polynomial
-                elif self.options.pot_type == PSD_POLY:
-                    assert (
-                        self.options.potential_poly_deg % 2 == 0
-                    ), "can't make a PSD potential of uneven degree"
-                    # potential is PSD polynomial
-                    potential = prog.NewSosPolynomial(
-                        Variables(x), self.options.potential_poly_deg
-                    )[0].ToExpression()
-                else:
-                    raise NotImplementedError("potential type not supported")
+            potential, _ = make_potential(x, self.options, prog)
                 
 
             self.x_vectors.append(x)
@@ -383,7 +335,8 @@ class DualEdge:
 
         # expr = edge_cost + right_potential - left_potential - G_of_v+ self.bidirectional_edge_violation/(self.options.num_control_points-1)
         expr = edge_cost + right_potential - left_potential - G_of_v
-        define_sos_constraint_over_polyhedron(prog, x_left, x_right, expr, B_left, B_right, opt)
+        define_sos_constraint_over_polyhedron_multivar(prog, [x_left, x_right], [B_left, B_right], expr, opt)
+        # define_sos_constraint_over_polyhedron(prog, x_left, x_right, expr, B_left, B_right, opt)
 
         # -------------------------------------------------
         # J_{vw, k} to J_{vw,k+1}
@@ -396,7 +349,8 @@ class DualEdge:
 
             # expr = edge_cost + right_potential - left_potential+ self.bidirectional_edge_violation/(self.options.num_control_points-1)
             expr = edge_cost + right_potential - left_potential
-            define_sos_constraint_over_polyhedron(prog, x_left, x_right, expr, B_left, B_right, opt)
+            define_sos_constraint_over_polyhedron_multivar(prog, [x_left, x_right], [B_left, B_right], expr, opt)
+            # define_sos_constraint_over_polyhedron(prog, x_left, x_right, expr, B_left, B_right, opt)
 
         # -------------------------------------------------
         # J_{vw, n} to J_{w}
@@ -418,7 +372,8 @@ class DualEdge:
             + self.bidirectional_edge_violation
             + self.right.total_flow_in_violation
         )
-        define_sos_constraint_over_polyhedron(prog, x_left, x_right, expr, B_left, B_right, opt)
+        define_sos_constraint_over_polyhedron_multivar(prog, [x_left, x_right], [B_left, B_right], expr, opt)
+        # define_sos_constraint_over_polyhedron(prog, x_left, x_right, expr, B_left, B_right, opt)
 
 
 class PolynomialDualGCS:
@@ -470,6 +425,21 @@ class PolynomialDualGCS:
     def MaxCostOverMoments(self, vertex:DualVertex, moment_matrix:npt.NDArray) -> None:
         cost = -vertex.cost_of_moment_measure(moment_matrix)
         self.prog.AddLinearCost(cost)
+        # TODO: ADD cost on violations here??
+
+    def MaxCostOverVertex(self, vertex:DualVertex):
+        hpoly = vertex.get_hpoly()
+        ellipsoid = hpoly.MaximumVolumeInscribedEllipsoid()
+        mu = ellipsoid.center()
+        sigma = np.linalg.inv(ellipsoid.A().T.dot(ellipsoid.A()))
+        assert np.all(np.linalg.eigvals(sigma) >= 1e-4)
+        m1 = mu
+        m2 = np.outer(mu, mu) + sigma
+
+        moment_matrix = make_moment_matrix(1, m1, m2)
+        
+        self.MaxCostOverMoments(vertex, moment_matrix)
+        
 
     def AddTargetVertexWithQuadraticTerminalCost(
         self,
@@ -529,7 +499,7 @@ class PolynomialDualGCS:
         bidirectional_edge_violation = self.prog.NewContinuousVariables(1)[0]
         self.prog.AddLinearConstraint(
             bidirectional_edge_violation >= 0
-        )  # TODO: shouldn't be necessary?
+        )  
         self.prog.AddLinearCost(bidirectional_edge_violation * self.options.max_flow_through_edge)
         self.AddEdge(v_left, v_right, cost_function, options, bidirectional_edge_violation)
         self.AddEdge(v_right, v_left, cost_function, options, bidirectional_edge_violation)
