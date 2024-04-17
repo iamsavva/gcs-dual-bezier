@@ -67,9 +67,10 @@ from polynomial_dual_gcs_utils import (
     make_potential
     # define_general_nonnegativity_constraint_on_a_set
 )
+from bezier_dual import DualVertex, DualEdge, PolynomialDualGCS
 
 
-class GoalConditionedDualVertex:
+class GoalConditionedDualVertex(DualVertex):
     def __init__(
         self,
         name: str,
@@ -254,7 +255,7 @@ class GoalConditionedDualVertex:
 
 
 
-class GoalConditionedDualEdge:
+class GoalConditionedDualEdge(DualEdge):
     def __init__(
         self,
         name: str,
@@ -385,7 +386,7 @@ class GoalConditionedDualEdge:
         # define_sos_constraint_over_polyhedron(prog, x_left, x_right, expr, B_left, B_right, opt)
 
 
-class GoalConditionedPolynomialDualGCS:
+class GoalConditionedPolynomialDualGCS(PolynomialDualGCS):
     def __init__(self, options: ProgramOptions, terminal_convex_set:ConvexSet):
         # variables creates for policy synthesis
         self.vertices = dict()  # type: T.Dict[str, GoalConditionedDualVertex]
@@ -399,6 +400,8 @@ class GoalConditionedPolynomialDualGCS:
         terminal_ellipsoid = t_hpoly.MaximumVolumeInscribedEllipsoid()
         self.terminal_mu = terminal_ellipsoid.center()
         self.terminal_sigma = np.linalg.inv(terminal_ellipsoid.A().T.dot(terminal_ellipsoid.A()))
+        self.terminal_vertex_set = False
+        self.terminal_vertex = self.AddTargetVertex("terminal")
 
     def get_terminal_hpoly(self) -> HPolyhedron:
         if isinstance(self.terminal_convex_set, HPolyhedron):
@@ -471,6 +474,10 @@ class GoalConditionedPolynomialDualGCS:
         HPolyhedron with quadratics, or
         Point and 0 potential.
         """
+        if self.terminal_vertex_set:
+            raise Exception("terminal vertex being set the second time! goal conditioned policy cna have only one.")
+        else:
+            self.terminal_vertex_set = True
         assert name not in self.vertices
         if options is None:
             options = self.options
@@ -537,43 +544,6 @@ class GoalConditionedPolynomialDualGCS:
         v_left.add_edge_out(edge_name)
         v_right.add_edge_in(edge_name)
         return e
-
-    def solve_policy(self) -> MathematicalProgramResult:
-        """
-        Synthesize a policy over the graph.
-        Policy is stored in the solution: you'd need to extract it per vertex.
-        """
-        timer = timeit()
-        mosek_solver = MosekSolver()
-        solver_options = SolverOptions()
-
-        # set the solver tolerance gaps
-        solver_options.SetOption(
-            MosekSolver.id(),
-            "MSK_DPAR_INTPNT_CO_TOL_REL_GAP",
-            self.options.MSK_DPAR_INTPNT_CO_TOL_REL_GAP,
-        )
-        solver_options.SetOption(
-            MosekSolver.id(),
-            "MSK_DPAR_INTPNT_CO_TOL_PFEAS",
-            self.options.MSK_DPAR_INTPNT_CO_TOL_PFEAS,
-        )
-        solver_options.SetOption(
-            MosekSolver.id(),
-            "MSK_DPAR_INTPNT_CO_TOL_DFEAS",
-            self.options.MSK_DPAR_INTPNT_CO_TOL_DFEAS,
-        )
-
-        if self.options.use_robust_mosek_parameters:
-            solver_options.SetOption(MosekSolver.id(), "MSK_DPAR_INTPNT_CO_TOL_REL_GAP", 1e-3)
-            solver_options.SetOption(MosekSolver.id(), "MSK_IPAR_INTPNT_SOLVE_FORM", 1)
-
-        # solve the program
-        self.value_function_solution = mosek_solver.Solve(self.prog, solver_options=solver_options)
-        timer.dt("Solve")
-        diditwork(self.value_function_solution)
-
-        return self.value_function_solution
     
     def export_a_gcs(self) -> T.Tuple[GraphOfConvexSets, T.Dict[str, GraphOfConvexSets.Vertex], GraphOfConvexSets.Vertex]:
         gcs = GraphOfConvexSets()
@@ -607,6 +577,7 @@ class GoalConditionedPolynomialDualGCS:
 
             # add bezier curve continuity constraint
             last_point = get_kth_control_point(gcs_e.xu(), k-1, k)
+            # observe that for target vertices, we just have a single point!
             if e.right.vertex_is_target:
                 first_point = gcs_e.xv()
             else:
@@ -614,6 +585,7 @@ class GoalConditionedPolynomialDualGCS:
             cons = eq( last_point, first_point )
             for con in cons:
                 gcs_e.AddConstraint(con)
+
             # add bezier curve smoothness constraint
             if not e.right.vertex_is_target:
                 lastlast_point = get_kth_control_point(gcs_e.xu(), k-2, k)

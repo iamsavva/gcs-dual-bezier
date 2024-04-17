@@ -79,6 +79,8 @@ class ProgramOptions:
         self.gcs_policy_max_rounded_paths = 100
         self.gcs_policy_use_preprocessing = True
 
+        self.verbose_solve_times = False
+
 
         
         
