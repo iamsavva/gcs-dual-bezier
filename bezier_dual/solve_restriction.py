@@ -93,7 +93,10 @@ def get_path_cost(
     for index, bezier_curve in enumerate(bezier_path):
         edge = graph.edges[get_edge_name(vertex_path[index].name, vertex_path[index + 1].name)]
         for i in range(len(bezier_curve) - 1):
-            cost += edge.cost_function(bezier_curve[i], bezier_curve[i + 1])
+            if terminal_state is not None:
+                cost += edge.cost_function(bezier_curve[i], bezier_curve[i + 1], terminal_state)
+            else:
+                cost += edge.cost_function(bezier_curve[i], bezier_curve[i + 1])
         if add_edge_and_vertex_violations:
             violations = graph.value_function_solution.GetSolution(edge.bidirectional_edge_violation) + graph.value_function_solution.GetSolution(edge.right.total_flow_in_violation)
             if isinstance(violations, Expression):
@@ -193,7 +196,10 @@ def solve_parallelized_convex_restriction(
                         prog.AddLinearConstraint(ge(vertex.B.dot(np.hstack(([1], x_j))), 0))
 
                     # quadratic cost with previous point
-                    prog.AddQuadraticCost(edge.cost_function(last_x, x_j))
+                    if terminal_state is not None:
+                        prog.AddQuadraticCost(edge.cost_function(last_x, x_j, terminal_state))
+                    else:
+                        prog.AddQuadraticCost(edge.cost_function(last_x, x_j))
 
                     # if the point is the first knot point in this set -- add the bezier continuity constraint
                     if j == 1 and last_delta is not None:
@@ -336,7 +342,10 @@ def solve_convex_restriction(
                     prog.AddLinearConstraint(ge(vertex.B.dot(np.hstack(([1], x_j))), 0))
 
                 # quadratic cost with previous point
-                prog.AddQuadraticCost(edge.cost_function(last_x, x_j))
+                if terminal_state is not None:
+                    prog.AddQuadraticCost(edge.cost_function(last_x, x_j, terminal_state))
+                else:
+                    prog.AddQuadraticCost(edge.cost_function(last_x, x_j))
 
                 # if the point is the first knot point in this set -- add the bezier continuity constraint
                 if j == 1 and last_delta is not None:
@@ -402,7 +411,10 @@ def get_optimal_path(
         options = graph.options
 
     k = options.num_control_points
-    gcs, vertices, pseudo_terminal_vertex = graph.export_a_gcs()
+    if terminal_state is not None:
+        gcs, vertices, pseudo_terminal_vertex = graph.export_a_gcs(terminal_state)
+    else:
+        gcs, vertices, pseudo_terminal_vertex = graph.export_a_gcs()
     
     # set initial vertex constraint
     start_vertex = vertices[vertex.name]

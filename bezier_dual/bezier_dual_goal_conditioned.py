@@ -69,6 +69,12 @@ from polynomial_dual_gcs_utils import (
 )
 from bezier_dual import DualVertex, DualEdge, PolynomialDualGCS
 
+delta = 0.001
+QUADRATIC_COST_GC = lambda x, y, z: np.sum([(x[i] - y[i]) ** 2 for i in range(len(x))])
+QUADRATIC_COST_AUGMENTED_GC = lambda x, y, z: np.sum(
+    [(x[i] - y[i]) ** 2 for i in range(len(x))]
+) + delta * 0.5* (np.sum([ (x[i]-z[i]) ** 2 + (y[i]-z[i]) ** 2 for i in range(len(x))]))
+
 
 class GoalConditionedDualVertex(DualVertex):
     def __init__(
@@ -167,6 +173,9 @@ class GoalConditionedDualVertex(DualVertex):
         else:
             prog.AddLinearConstraint(self.total_flow_in_violation == 0)
 
+        if self.options.dont_use_flow_violations:
+            prog.AddLinearConstraint(self.total_flow_in_violation == 0)
+
     def define_set_inequalities(self):
         """
         Assuming that sets are polyhedrons
@@ -203,6 +212,7 @@ class GoalConditionedDualVertex(DualVertex):
             self.eval_G = lambda x: Expression(0)
         else:
             if self.options.use_G_term_in_value_synthesis:
+                # TODO: need to go over this for x and y
                 # TODO: check if this matters or not
                 self.G_matrix = prog.NewSymmetricContinuousVariables(self.state_dim + 1)
 
@@ -328,7 +338,7 @@ class GoalConditionedDualEdge(DualEdge):
         # J_{v} to J_{vw,1}
         x_left, x_right = self.left.x, self.x_vectors[0]
         B_left, B_right = self.left.B, self.left.B
-        edge_cost = self.cost_function(x_left, x_right)
+        edge_cost = self.cost_function(x_left, x_right, xt)
         G_of_v = self.left.eval_G(x_right - x_left)
         left_potential = self.left.potential
         right_potential = self.potentials[0]
@@ -343,7 +353,7 @@ class GoalConditionedDualEdge(DualEdge):
         for k in range(self.options.num_control_points - 3):
             x_left, x_right = self.x_vectors[k], self.x_vectors[k + 1]
             B_left, B_right = self.left.B, self.left.B
-            edge_cost = self.cost_function(x_left, x_right)
+            edge_cost = self.cost_function(x_left, x_right, xt)
             left_potential = self.potentials[k]
             right_potential = self.potentials[k + 1]
 
@@ -357,7 +367,7 @@ class GoalConditionedDualEdge(DualEdge):
         n = self.options.num_control_points - 3
         x_left, x_right = self.x_vectors[n], self.right.x
         B_left, B_right = self.left.B, self.B_intersection
-        edge_cost = self.cost_function(x_left, x_right)
+        edge_cost = self.cost_function(x_left, x_right, xt)
         G_of_v = self.left.eval_G(x_right - x_left)
         left_potential = self.potentials[n]
         right_potential = self.right.potential
@@ -365,7 +375,7 @@ class GoalConditionedDualEdge(DualEdge):
         # NOTE: adding bidriectional edge violation just to the last constraint
         # expr = edge_cost + right_potential + G_of_v - left_potential + self.bidirectional_edge_violation/(self.options.num_control_points-1)
         if self.right.vertex_is_target:
-            edge_cost = self.cost_function(x_left, xt)
+            edge_cost = self.cost_function(x_left, xt, xt)
             expr = (
                 edge_cost
                 - left_potential
@@ -515,6 +525,8 @@ class GoalConditionedPolynomialDualGCS(PolynomialDualGCS):
         self.prog.AddLinearCost(bidirectional_edge_violation * self.options.max_flow_through_edge)
         self.AddEdge(v_left, v_right, cost_function, options, bidirectional_edge_violation)
         self.AddEdge(v_right, v_left, cost_function, options, bidirectional_edge_violation)
+        if self.options.dont_use_flow_violations:
+            self.prog.AddLinearConstraint(bidirectional_edge_violation == 0)
 
     def AddEdge(
         self,
@@ -527,6 +539,7 @@ class GoalConditionedPolynomialDualGCS(PolynomialDualGCS):
         """
         Options will default to graph initialized options if not specified
         """
+        # print(v_left.name, v_right.name)
         if options is None:
             options = self.options
         edge_name = get_edge_name(v_left.name, v_right.name)
@@ -545,7 +558,7 @@ class GoalConditionedPolynomialDualGCS(PolynomialDualGCS):
         v_right.add_edge_in(edge_name)
         return e
     
-    def export_a_gcs(self) -> T.Tuple[GraphOfConvexSets, T.Dict[str, GraphOfConvexSets.Vertex], GraphOfConvexSets.Vertex]:
+    def export_a_gcs(self, terminal_state:npt.NDArray) -> T.Tuple[GraphOfConvexSets, T.Dict[str, GraphOfConvexSets.Vertex], GraphOfConvexSets.Vertex]:
         gcs = GraphOfConvexSets()
         terminal_vertex = gcs.AddVertex(Hyperrectangle([],[]), "the_terminal_vertex")
         k = self.options.num_control_points
@@ -572,7 +585,7 @@ class GoalConditionedPolynomialDualGCS(PolynomialDualGCS):
             for i in range(k-1):
                 left_point = get_kth_control_point(gcs_e.xu(), i, k)
                 right_point = get_kth_control_point(gcs_e.xu(), i+1, k)
-                cost += cost_function(left_point, right_point)
+                cost += cost_function(left_point, right_point, terminal_state)
             gcs_e.AddCost(cost)
 
             # add bezier curve continuity constraint

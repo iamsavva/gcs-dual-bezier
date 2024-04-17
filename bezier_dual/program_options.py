@@ -81,6 +81,8 @@ class ProgramOptions:
 
         self.verbose_solve_times = False
 
+        self.dont_use_flow_violations = False
+
 
         
         
