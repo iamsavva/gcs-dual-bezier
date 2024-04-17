@@ -126,36 +126,39 @@ def define_quadratic_polynomial(
     return J_matrix, potential
 
 
-def make_potential(indet_list: npt.NDArray, options: ProgramOptions, prog: MathematicalProgram) -> T.Tuple[Expression, npt.NDArray]:
+def make_potential(indet_list: npt.NDArray, pot_type:str, poly_deg:int, prog: MathematicalProgram) -> T.Tuple[Expression, npt.NDArray]:
     state_dim = len(indet_list)
     vars_from_indet = Variables(indet_list)
     # quadratic polynomial. special case due to convex functions and special quadratic implementations
-    if options.potential_poly_deg == 0:
+    if poly_deg == 0:
         a = np.zeros(state_dim)
         b = prog.NewContinuousVariables(1)[0]
         J_matrix = make_moment_matrix(b, a, np.zeros((state_dim, state_dim)))
         potential = Expression(b)
-    if options.potential_poly_deg == 1:
+        if pot_type == PSD_POLY:
+            prog.AddLinearConstraint(b >= 0)
+            
+    elif poly_deg == 1:
         a = prog.NewContinuousVariables(state_dim)
         b = prog.NewContinuousVariables(1)[0]
         J_matrix = make_moment_matrix(b, a, np.zeros((state_dim, state_dim)))
         potential = 2 * a.dot(indet_list) + b
-    elif options.potential_poly_deg == 2:
-        J_matrix, potential = define_quadratic_polynomial(prog, indet_list, options.pot_type)
+    elif poly_deg == 2:
+        J_matrix, potential = define_quadratic_polynomial(prog, indet_list, pot_type)
     else:
         J_matrix = None
         # free polynomial
-        if options.pot_type == FREE_POLY:
+        if pot_type == FREE_POLY:
             potential = prog.NewFreePolynomial(
-                vars_from_indet, options.potential_poly_deg
+                vars_from_indet, poly_deg
             ).ToExpression()
         # PSD polynomial
-        elif options.pot_type == PSD_POLY:
+        elif pot_type == PSD_POLY:
             assert (
-                options.potential_poly_deg % 2 == 0
+                poly_deg % 2 == 0
             ), "can't make a PSD potential of uneven degree"
             # potential is PSD polynomial
-            potential = prog.NewSosPolynomial(vars_from_indet, options.potential_poly_deg)[0].ToExpression()
+            potential = prog.NewSosPolynomial(vars_from_indet, poly_deg)[0].ToExpression()
         else:
             raise NotImplementedError("potential type not supported")
     return potential, J_matrix

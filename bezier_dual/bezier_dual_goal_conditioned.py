@@ -83,7 +83,7 @@ class GoalConditionedDualVertex(DualVertex):
         prog: MathematicalProgram,
         convex_set: ConvexSet,
         terminal_convex_set: ConvexSet,
-        terminal_indeterminates: npt.NDArray,
+        xt: npt.NDArray,
         options: ProgramOptions,
         vertex_is_start: bool = False,
         vertex_is_target: bool = False,
@@ -118,7 +118,7 @@ class GoalConditionedDualVertex(DualVertex):
             self.terminal_set_type = None
             raise Exception("bad terminal state set")
         
-        self.xt = terminal_indeterminates
+        self.xt = xt
         self.define_variables(prog)
         self.define_set_inequalities()
         self.define_potential(prog)
@@ -166,15 +166,14 @@ class GoalConditionedDualVertex(DualVertex):
         # self.xt = prog.NewIndeterminates(self.state_dim, "xt_" + self.name)
         self.vars = Variables(np.hstack((self.x, self.xt)))
 
-        self.total_flow_in_violation = prog.NewContinuousVariables(1)[0]
-        if not self.vertex_is_target:
-            prog.AddLinearConstraint(self.total_flow_in_violation >= 0)
-            prog.AddLinearCost(self.total_flow_in_violation * self.options.max_flow_through_edge)
+        if self.options.flow_violation_polynomial_degree == 0 or self.vertex_is_target:
+            self.total_flow_in_violation, self.total_flow_in_violation_mat = make_potential(self.xt, PSD_POLY, 0, prog)
+            if self.vertex_is_target:
+                prog.AddLinearConstraint(self.total_flow_in_violation == 0)
+        elif self.options.flow_violation_polynomial_degree == 2:
+            self.total_flow_in_violation, self.total_flow_in_violation_mat = make_potential(self.xt, PSD_POLY, 2, prog)
         else:
-            prog.AddLinearConstraint(self.total_flow_in_violation == 0)
-
-        if self.options.dont_use_flow_violations:
-            prog.AddLinearConstraint(self.total_flow_in_violation == 0)
+            raise Exception("bad vilation polynomial degree " + str(self.options.flow_violation_polynomial_degree))
 
     def define_set_inequalities(self):
         """
@@ -202,7 +201,8 @@ class GoalConditionedDualVertex(DualVertex):
             self.potential = Expression(0)
         else:
             x_and_xt = np.hstack((self.x, self.xt))
-            self.potential, self.J_matrix = make_potential(x_and_xt, self.options, prog)
+            self.potential, self.J_matrix = make_potential(x_and_xt, self.options.pot_type, self.options.potential_poly_deg, prog)
+            
 
         # define G -- the bezier curve continuity vector
         # TODO: i don't like my current implementation of G factors
@@ -262,6 +262,16 @@ class GoalConditionedDualVertex(DualVertex):
         assert np.all(B.dot(moment_matrix).dot(e1) >= -eps), "moment matrix not supported on set"
         assert np.all(B.dot(moment_matrix).dot(B.T) >= -eps), "moment matrix not supported on set"
         return np.sum(self.J_matrix * moment_matrix)
+    
+    def push_down_on_flow_violation(self, prog:MathematicalProgram, terminal_moment_matrix:npt.NDArray):
+        # add the cost on violations
+        prog.AddLinearCost(np.sum(terminal_moment_matrix * self.total_flow_in_violation_mat))
+        # if self.options.flow_violation_polynomial_degree == 0:
+        #     prog.AddLinearCost(terminal_moment_matrix[0,0] * self.total_flow_in_violation)
+        # elif self.options.flow_violation_polynomial_degree == 2:
+        #     prog.AddLinearCost(np.sum(terminal_moment_matrix * self.total_flow_in_violation_mat))
+        # else:
+        #     raise Exception("bad flow_violation_polynomial_degree")
 
 
 
@@ -325,7 +335,7 @@ class GoalConditionedDualEdge(DualEdge):
             x = prog.NewIndeterminates(self.left.state_dim)
 
             x_and_xt = np.hstack((x, xt))
-            potential, _ = make_potential(x_and_xt, self.options, prog)
+            potential, _ = make_potential(x_and_xt, self.options.pot_type, self.options.potential_poly_deg, prog)
             self.x_vectors.append(x)
             # self.J_matrices.append(J_matrix)
             self.potentials.append(potential)
@@ -406,12 +416,14 @@ class GoalConditionedPolynomialDualGCS(PolynomialDualGCS):
         self.options = options
         self.terminal_convex_set = terminal_convex_set
         t_hpoly = self.get_terminal_hpoly()
-        self.terminal_indeterminates = self.prog.NewIndeterminates(t_hpoly.A().shape[1])
+        self.xt = self.prog.NewIndeterminates(t_hpoly.A().shape[1])
         terminal_ellipsoid = t_hpoly.MaximumVolumeInscribedEllipsoid()
         self.terminal_mu = terminal_ellipsoid.center()
         self.terminal_sigma = np.linalg.inv(terminal_ellipsoid.A().T.dot(terminal_ellipsoid.A()))
         self.terminal_vertex_set = False
         self.terminal_vertex = self.AddTargetVertex("terminal")
+        self.pushing_up = False
+        self.bidir_flow_violation_matrices = [] # type: T.List[npt.NDArray]
 
     def get_terminal_hpoly(self) -> HPolyhedron:
         if isinstance(self.terminal_convex_set, HPolyhedron):
@@ -434,13 +446,15 @@ class GoalConditionedPolynomialDualGCS(PolynomialDualGCS):
         assert name not in self.vertices
         if options is None:
             options = self.options
+        if self.pushing_up:
+            raise Exception("adding a vertex after pushing up, that's bad")
         # add vertex to policy graph
         v = GoalConditionedDualVertex(
             name,
             self.prog,
             convex_set,
             self.terminal_convex_set,
-            self.terminal_indeterminates,
+            self.xt,
             options=options,
             vertex_is_start=vertex_is_start,
         )
@@ -467,8 +481,16 @@ class GoalConditionedPolynomialDualGCS(PolynomialDualGCS):
         cost = -vertex.cost_of_moment_measure(moment_matrix)
         self.prog.AddLinearCost(cost)
 
-        # TODO: add cost right here!
         terminal_moment_matrix = make_moment_matrix(1, m1_t, m2_t)
+        if not self.pushing_up:
+            self.pushing_up = True
+
+        for v in self.vertices.values():
+           v.push_down_on_flow_violation(self.prog, terminal_moment_matrix)
+
+        for mat in self.bidir_flow_violation_matrices:
+            self.prog.AddLinearCost( np.sum(mat * terminal_moment_matrix))
+
         
 
     def AddTargetVertex(
@@ -497,7 +519,7 @@ class GoalConditionedPolynomialDualGCS(PolynomialDualGCS):
             self.prog,
             self.terminal_convex_set,
             self.terminal_convex_set,
-            self.terminal_indeterminates,
+            self.xt,
             options=options,
             vertex_is_target=True,
         )
@@ -515,18 +537,22 @@ class GoalConditionedPolynomialDualGCS(PolynomialDualGCS):
         """
         adding two edges
         """
+        if self.pushing_up:
+            raise Exception("adding bidir edges after pushing up, bad")
+        
         if options is None:
             options = self.options
         bidirectional_edge_violation = self.prog.NewContinuousVariables(1)[0]
-        self.prog.AddLinearConstraint(
-            bidirectional_edge_violation >= 0
-        ) 
+        self.prog.AddLinearConstraint(bidirectional_edge_violation >= 0) 
         # TODO: fix up to make polynomials
         self.prog.AddLinearCost(bidirectional_edge_violation * self.options.max_flow_through_edge)
+
+        bidirectional_edge_violation, bidirectional_edge_violation_mat = make_potential(self.xt, PSD_POLY, self.options.flow_violation_polynomial_degree, self.prog)
+        self.bidir_flow_violation_matrices.append(bidirectional_edge_violation_mat)
+
+
         self.AddEdge(v_left, v_right, cost_function, options, bidirectional_edge_violation)
         self.AddEdge(v_right, v_left, cost_function, options, bidirectional_edge_violation)
-        if self.options.dont_use_flow_violations:
-            self.prog.AddLinearConstraint(bidirectional_edge_violation == 0)
 
     def AddEdge(
         self,

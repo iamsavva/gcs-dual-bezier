@@ -83,6 +83,8 @@ class ProgramOptions:
 
         self.dont_use_flow_violations = False
 
+        self.flow_violation_polynomial_degree = 0
+
 
         
         

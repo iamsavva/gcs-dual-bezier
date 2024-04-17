@@ -171,7 +171,7 @@ class DualVertex:
         if specific_potential is not None:
             self.potential = specific_potential(self.x)
         else:
-            self.potential, self.J_matrix = make_potential(self.x, self.options, prog)
+            self.potential, self.J_matrix = make_potential(self.x, self.options.pot_type, self.options.potential_poly_deg, prog)
 
         # define G -- the bezier curve continuity vector
         # TODO: i don't like my current implementation of G factors
@@ -313,7 +313,7 @@ class DualEdge:
 
         for k in range(self.options.num_control_points - 2):
             x = prog.NewIndeterminates(self.left.state_dim)
-            potential, _ = make_potential(x, self.options, prog)
+            potential, _ = make_potential(x, self.options.pot_type, self.options.potential_poly_deg, prog)
                 
 
             self.x_vectors.append(x)
