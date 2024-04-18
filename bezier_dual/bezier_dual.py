@@ -358,7 +358,7 @@ class DualEdge:
         x_left, x_right = self.x_vectors[n], self.right.x
         B_left, B_right = self.left.B, self.B_intersection
         edge_cost = self.cost_function(x_left, x_right)
-        G_of_v = self.left.eval_G(x_right - x_left)
+        G_of_v = self.right.eval_G(x_right - x_left)
         left_potential = self.potentials[n]
         right_potential = self.right.potential
 
