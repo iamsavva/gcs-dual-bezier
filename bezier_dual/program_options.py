@@ -66,6 +66,10 @@ class ProgramOptions:
         # ----------------------------------
         # solver selection for the lookaheads in the policy
         self.policy_solver = None
+        self.policy_use_robust_mosek_params = False
+        self.policy_MSK_DPAR_INTPNT_CO_TOL_REL_GAP = 1e-6
+        self.policy_MSK_DPAR_INTPNT_CO_TOL_PFEAS = 1e-6
+        self.policy_MSK_DPAR_INTPNT_CO_TOL_DFEAS = 1e-6
 
         self.policy_verbose_choices = False
         self.policy_verbose_number_of_restrictions_solves = False
@@ -81,7 +85,7 @@ class ProgramOptions:
 
         self.verbose_solve_times = False
 
-        self.dont_use_flow_violations = False
+        self.dont_use_flow_violations = False # TODO: depricated?
 
         self.flow_violation_polynomial_degree = 0
 

@@ -39,6 +39,7 @@ from pydrake.math import (  # pylint: disable=import-error, no-name-in-module, u
     eq,
     le,
 )
+import cProfile
 
 import plotly.graph_objects as go  # pylint: disable=import-error
 from plotly.express.colors import sample_colorscale  # pylint: disable=import-error
@@ -123,14 +124,19 @@ def solve_parallelized_convex_restriction(
     state_last: npt.NDArray = None,
     options: ProgramOptions = None,
     verbose_failure=False,
-    terminal_state:npt.NDArray = None
+    terminal_state:npt.NDArray = None,
+    one_last_solve:bool = False
 ) -> T.List[T.Tuple[T.List[DualVertex], T.List[T.List[npt.NDArray]]]]:
+
     """
     solve a convex restriction over a vertex path
     return cost of the vertex_path
     and return a list of bezier curves
     where bezier curve is a list of numpy arrays (vectors).
     """
+
+    
+
     if options is None:
         options = graph.options
 
@@ -138,11 +144,18 @@ def solve_parallelized_convex_restriction(
     prog = MathematicalProgram()
     all_bezier_curves = []
     timer = timeit()
+
+    def add_ge_lin_con(B:npt.NDArray, x:npt.NDArray):
+        prog.AddLinearConstraint(-B[:, 1:], 
+                                 -np.infty*np.ones( B.shape[0]),
+                                 B[:, 0],
+                                 x)
+
     for vertex_path in vertex_paths:
 
         # initial state
         last_x = prog.NewContinuousVariables(vertex_path[0].state_dim)
-        prog.AddLinearConstraint(eq(last_x, state_now))
+        prog.AddLinearConstraint( eq(last_x, state_now))
         # previous direction of motion -- for bezier curve continuity
         last_delta = None
         if state_last is not None:
@@ -178,7 +191,11 @@ def solve_parallelized_convex_restriction(
 
                 # assert that next control point is feasible -- for bezier curve continuity
                 if not vertex.vertex_is_target:
-                    prog.AddLinearConstraint(ge(vertex.B.dot(np.hstack(([1], last_x + last_delta))), 0))
+                    next_x = prog.NewContinuousVariables(vertex_path[0].state_dim)
+                    prog.AddLinearConstraint(eq(next_x, last_x + last_delta)) 
+                    add_ge_lin_con(vertex.B, next_x)
+                    # prog.AddLinearConstraint(ge(vertex.B.dot(np.hstack(([1], next_x))), 0))
+                    
 
             else:
                 bezier_curve = [last_x]
@@ -190,10 +207,12 @@ def solve_parallelized_convex_restriction(
                     # knot point inside a set
                     if j == options.num_control_points - 1:
                         # inside the intersection
-                        prog.AddLinearConstraint(ge(edge.B_intersection.dot(np.hstack(([1], x_j))), 0))
+                        # prog.AddLinearConstraint(ge(edge.B_intersection.dot(np.hstack(([1], x_j))), 0))
+                        add_ge_lin_con(edge.B_intersection, x_j)
                     else:
                         # inside the vertex
-                        prog.AddLinearConstraint(ge(vertex.B.dot(np.hstack(([1], x_j))), 0))
+                        add_ge_lin_con(vertex.B, x_j)
+                        # prog.AddLinearConstraint(ge(vertex.B.dot(np.hstack(([1], x_j))), 0))
 
                     # quadratic cost with previous point
                     if terminal_state is not None:
@@ -234,11 +253,40 @@ def solve_parallelized_convex_restriction(
         all_bezier_curves.append(bezier_curves)
 
     timer.dt("just building", print_stuff=options.verbose_solve_times)
+    
     # TODO: kinda nasty. how about instead i pass a solver constructor
     if options.policy_solver is None:
         solution = Solve(prog)
     else:
-        solution = options.policy_solver().Solve(prog)
+        if options.policy_solver == MosekSolver:
+            mosek_solver = MosekSolver()
+            solver_options = SolverOptions()
+            # set the solver tolerance gaps
+            if not one_last_solve:
+                solver_options.SetOption(
+                    MosekSolver.id(),
+                    "MSK_DPAR_INTPNT_CO_TOL_REL_GAP",
+                    options.policy_MSK_DPAR_INTPNT_CO_TOL_REL_GAP,
+                )
+                solver_options.SetOption(
+                    MosekSolver.id(),
+                    "MSK_DPAR_INTPNT_CO_TOL_PFEAS",
+                    options.policy_MSK_DPAR_INTPNT_CO_TOL_PFEAS,
+                )
+                solver_options.SetOption(
+                    MosekSolver.id(),
+                    "MSK_DPAR_INTPNT_CO_TOL_DFEAS",
+                    options.policy_MSK_DPAR_INTPNT_CO_TOL_DFEAS,
+                )
+            if options.policy_use_robust_mosek_params:
+                solver_options.SetOption(MosekSolver.id(), "MSK_DPAR_INTPNT_CO_TOL_REL_GAP", 1e-3)
+                solver_options.SetOption(MosekSolver.id(), "MSK_IPAR_INTPNT_SOLVE_FORM", 1)
+
+            # solve the program
+            solution = mosek_solver.Solve(prog, solver_options=solver_options)
+        else:
+            solution = options.policy_solver().Solve(prog)
+
     timer.dt("just solving", print_stuff=options.verbose_solve_times)
 
     final_result = []
@@ -273,7 +321,8 @@ def solve_convex_restriction(
     state_last: npt.NDArray = None,
     options: ProgramOptions = None,
     verbose_failure:bool =False,
-    terminal_state:npt.NDArray = None
+    terminal_state:npt.NDArray = None,
+    one_last_solve = False
 ) -> T.Tuple[float, T.List[T.List[npt.NDArray]]]:
     """
     solve a convex restriction over a vertex path
@@ -293,6 +342,13 @@ def solve_convex_restriction(
     last_delta = None
     if state_last is not None:
         last_delta = last_x - state_last
+
+
+    def add_ge_lin_con(B:npt.NDArray, x:npt.NDArray):
+        prog.AddLinearConstraint(-B[:, 1:], 
+                                 -np.infty*np.ones( B.shape[0]),
+                                 B[:, 0],
+                                 x)
 
     bezier_curves = []
     # for every vertex:
@@ -324,7 +380,9 @@ def solve_convex_restriction(
 
             # assert that next control point is feasible -- for bezier curve continuity
             if not vertex.vertex_is_target:
-                prog.AddLinearConstraint(ge(vertex.B.dot(np.hstack(([1], last_x + last_delta))), 0))
+                next_x = prog.NewContinuousVariables(vertex_path[0].state_dim)
+                prog.AddLinearConstraint(eq(next_x, last_x + last_delta)) 
+                add_ge_lin_con(vertex.B, next_x)
 
         else:
             bezier_curve = [last_x]
@@ -336,10 +394,12 @@ def solve_convex_restriction(
                 # knot point inside a set
                 if j == options.num_control_points - 1:
                     # inside the intersection
-                    prog.AddLinearConstraint(ge(edge.B_intersection.dot(np.hstack(([1], x_j))), 0))
+                    # prog.AddLinearConstraint(ge(edge.B_intersection.dot(np.hstack(([1], x_j))), 0))
+                    add_ge_lin_con(edge.B_intersection, x_j)
                 else:
                     # inside the vertex
-                    prog.AddLinearConstraint(ge(vertex.B.dot(np.hstack(([1], x_j))), 0))
+                    # prog.AddLinearConstraint(ge(vertex.B.dot(np.hstack(([1], x_j))), 0))
+                    add_ge_lin_con(vertex.B, x_j)
 
                 # quadratic cost with previous point
                 if terminal_state is not None:
@@ -381,7 +441,34 @@ def solve_convex_restriction(
     if options.policy_solver is None:
         solution = Solve(prog)
     else:
-        solution = options.policy_solver().Solve(prog)
+        if options.policy_solver == MosekSolver:
+            mosek_solver = MosekSolver()
+            solver_options = SolverOptions()
+            # set the solver tolerance gaps
+            if not one_last_solve:
+                solver_options.SetOption(
+                    MosekSolver.id(),
+                    "MSK_DPAR_INTPNT_CO_TOL_REL_GAP",
+                    options.policy_MSK_DPAR_INTPNT_CO_TOL_REL_GAP,
+                )
+                solver_options.SetOption(
+                    MosekSolver.id(),
+                    "MSK_DPAR_INTPNT_CO_TOL_PFEAS",
+                    options.policy_MSK_DPAR_INTPNT_CO_TOL_PFEAS,
+                )
+                solver_options.SetOption(
+                    MosekSolver.id(),
+                    "MSK_DPAR_INTPNT_CO_TOL_DFEAS",
+                    options.policy_MSK_DPAR_INTPNT_CO_TOL_DFEAS,
+                )
+            if options.policy_use_robust_mosek_params:
+                solver_options.SetOption(MosekSolver.id(), "MSK_DPAR_INTPNT_CO_TOL_REL_GAP", 1e-3)
+                solver_options.SetOption(MosekSolver.id(), "MSK_IPAR_INTPNT_SOLVE_FORM", 1)
+
+            # solve the program
+            solution = mosek_solver.Solve(prog, solver_options=solver_options)
+        else:
+            solution = options.policy_solver().Solve(prog)
 
     if solution.is_success():
         optimization_cost = solution.get_optimal_cost()

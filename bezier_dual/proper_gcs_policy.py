@@ -163,6 +163,7 @@ def get_k_step_optimal_path(
     options: ProgramOptions = None,
     already_visited: T.List[DualVertex] = [],
     terminal_state: npt.NDArray = None,
+    one_last_solve = False
 ) -> T.Tuple[float, T.List[T.List[npt.NDArray]], T.List[DualVertex]]:
     """ 
     do not use this to compute optimal trajectories
@@ -176,7 +177,7 @@ def get_k_step_optimal_path(
     # for every path -- solve convex restriction
     best_cost, best_path, best_vertex_path = np.inf, None, None
     for vertex_path in vertex_paths:
-        cost, bezier_curves = solve_convex_restriction(gcs, vertex_path, state, last_state, options, terminal_state=terminal_state)
+        cost, bezier_curves = solve_convex_restriction(gcs, vertex_path, state, last_state, options, terminal_state=terminal_state, one_last_solve=one_last_solve)
         if options.policy_verbose_choices:
             print([v.name for v in vertex_path], cost)
         # maintain the best path / choice
@@ -232,7 +233,8 @@ def lookahead_policy(
             state_last,
             options,
             already_visited=vertex_path_so_far,
-            terminal_state = terminal_state
+            terminal_state = terminal_state,
+            one_last_solve = False,
         )
         if bezier_path is None:
             WARN("k-step optimal path couldn't find a solution")
@@ -252,7 +254,7 @@ def lookahead_policy(
 
     # solve a convex restriction on the vertex sequence
     if options.postprocess_by_solving_restriction_on_mode_sequence:
-        _, full_path = solve_convex_restriction(gcs, vertex_path_so_far, initial_state, initial_previous_state, options, terminal_state=terminal_state)
+        _, full_path = solve_convex_restriction(gcs, vertex_path_so_far, initial_state, initial_previous_state, options, terminal_state=terminal_state, one_last_solve = True)
         # verbose
         if options.verbose_restriction_improvement:
             cost_after = get_path_cost(gcs, vertex_path_so_far, full_path, False, True, terminal_state=terminal_state)
@@ -318,7 +320,7 @@ def lookahead_with_backtracking_policy(
             )
             # for every path -- solve convex restriction, add next states
             for vertex_path in vertex_paths:
-                cost, bezier_curves = solve_convex_restriction(gcs, vertex_path, node.state_now, node.state_last, options, terminal_state=terminal_state)
+                cost, bezier_curves = solve_convex_restriction(gcs, vertex_path, node.state_now, node.state_last, options, terminal_state=terminal_state, one_last_solve=False)
                 num_times_solved_convex_restriction += 1
                 if np.isfinite(cost):
                     next_node = node.extend(bezier_curves[0], vertex_path[1])
@@ -335,7 +337,7 @@ def lookahead_with_backtracking_policy(
         full_path = target_node.bezier_path_so_far
         # solve a convex restriction on the vertex sequence
         if options.postprocess_by_solving_restriction_on_mode_sequence:
-            _, full_path = solve_convex_restriction(gcs, target_node.vertex_path_so_far, initial_state, initial_previous_state, options, terminal_state=terminal_state)
+            _, full_path = solve_convex_restriction(gcs, target_node.vertex_path_so_far, initial_state, initial_previous_state, options, terminal_state=terminal_state, one_last_solve=True)
             # verbose
             if options.verbose_restriction_improvement:
                 cost_after = get_path_cost(gcs, target_node.vertex_path_so_far, full_path, False, True, terminal_state=terminal_state)
@@ -397,7 +399,7 @@ def cheap_a_star_policy(
             # for every path -- solve convex restriction, add next states
             # print(len(vertex_paths))
             for vertex_path in vertex_paths:
-                cost, bezier_curves = solve_convex_restriction(gcs, vertex_path, node.state_now, node.state_last, options, terminal_state=terminal_state)
+                cost, bezier_curves = solve_convex_restriction(gcs, vertex_path, node.state_now, node.state_last, options, terminal_state=terminal_state, one_last_solve=False)
                 num_times_solved_convex_restriction += 1
                 # check if solution exists
                 if np.isfinite(cost):
@@ -421,7 +423,7 @@ def cheap_a_star_policy(
         full_path = target_node.bezier_path_so_far
         # solve a convex restriction on the vertex sequence
         if options.postprocess_by_solving_restriction_on_mode_sequence:
-            _, full_path = solve_convex_restriction(gcs, target_node.vertex_path_so_far, initial_state, initial_previous_state, options, terminal_state=terminal_state)
+            _, full_path = solve_convex_restriction(gcs, target_node.vertex_path_so_far, initial_state, initial_previous_state, options, terminal_state=terminal_state, one_last_solve=True)
             # verbose
             if options.verbose_restriction_improvement:
                 cost_after = get_path_cost(gcs, target_node.vertex_path_so_far, full_path, False, True, terminal_state=terminal_state)
@@ -484,7 +486,7 @@ def cheap_a_star_policy_parallelized(
             # for every path -- solve convex restriction, add next states
             # print(len(vertex_paths))
             timer = timeit()
-            solutions = solve_parallelized_convex_restriction(gcs, vertex_paths, node.state_now, node.state_last, options, terminal_state=terminal_state)
+            solutions = solve_parallelized_convex_restriction(gcs, vertex_paths, node.state_now, node.state_last, options, terminal_state=terminal_state, one_last_solve=False)
             timer.dt("solving", print_stuff = options.verbose_solve_times)
             num_times_solved_convex_restriction += 1
             for (vertex_path, bezier_curves) in solutions:
@@ -508,7 +510,7 @@ def cheap_a_star_policy_parallelized(
         full_path = target_node.bezier_path_so_far
         # solve a convex restriction on the vertex sequence
         if options.postprocess_by_solving_restriction_on_mode_sequence:
-            _, full_path = solve_convex_restriction(gcs, target_node.vertex_path_so_far, initial_state, initial_previous_state, options, terminal_state=terminal_state)
+            _, full_path = solve_convex_restriction(gcs, target_node.vertex_path_so_far, initial_state, initial_previous_state, options, terminal_state=terminal_state, one_last_solve=True)
             # verbose
             if options.verbose_restriction_improvement:
                 cost_after = get_path_cost(gcs, target_node.vertex_path_so_far, full_path, False, True, terminal_state=terminal_state)
