@@ -205,26 +205,13 @@ class GoalConditionedDualVertex(DualVertex):
             
 
         # define G -- the bezier curve continuity vector
-        # TODO: i don't like my current implementation of G factors
         # TODO: vertex-is_start stuff needs to be handled more carefully
         if self.vertex_is_target or self.vertex_is_start or not (self.options.use_G_term_in_value_synthesis):
             self.G_matrix = np.zeros((2*self.state_dim + 1, 2*self.state_dim + 1))
-            # self.eval_G = lambda x: Expression(0)
             self.G_expression = Expression(0)
         else:
-            # TODO: need to go over this for x and y
             # TODO: check if this matters or not
-            self.G_expression, self.G_matrix = make_potential(x_and_xt, PSD_POLY, 2, prog)
-            # self.G_matrix = prog.NewSymmetricContinuousVariables(self.state_dim + 1)
-            # def eval_G(x):
-            #     x_and_1 = np.hstack(([1], x))
-            #     return x_and_1.dot(self.G_matrix).dot(x_and_1)
-
-            # self.eval_G = eval_G
-            # else:
-            #     self.G_matrix = np.zeros((2*self.state_dim + 1, 2*self.state_dim + 1))
-            #     self.G_expression = Expression(0)
-            #     # self.eval_G = lambda x: Expression(0)
+            self.G_expression, self.G_matrix = make_potential(x_and_xt, self.options.G_poly_type, 2, prog)
 
     def cost_at_point(self, x: npt.NDArray, xt:npt.NDArray, solution: MathematicalProgramResult):
         """

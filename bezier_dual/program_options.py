@@ -85,6 +85,8 @@ class ProgramOptions:
 
         self.flow_violation_polynomial_degree = 0
 
+        self.G_poly_type = FREE_POLY
+
 
         
         

@@ -226,11 +226,11 @@ def solve_parallelized_convex_restriction(
             #     NOTE: this will make the problem non-convex
             #     TODO: is this is a hack or genuinly useful.
                 if options.policy_add_G_term:
-                    G_matrix = graph.value_function_solution.GetSolution(vertex.G_matrix)
-                    def eval_G(x):
-                        x_and_1 = np.hstack(([1], x))
-                        return x_and_1.dot(G_matrix).dot(x_and_1)
-                    prog.AddCost(eval_G(last_delta))
+                    G_expression = graph.value_function_solution.GetSolution(vertex.G_expression)
+                    G_expression = G_expression.Substitute({vertex.x[i]: last_delta[i] for i in range(vertex.state_dim)})
+                    if terminal_state is not None:
+                        G_expression = G_expression.Substitute({vertex.xt[i]: terminal_state[i] for i in range(vertex.state_dim)})
+                    prog.AddCost(G_expression)
         all_bezier_curves.append(bezier_curves)
 
     timer.dt("just building", print_stuff=options.verbose_solve_times)
@@ -372,11 +372,11 @@ def solve_convex_restriction(
             # NOTE: this will make the problem non-convex
             # TODO: is this is a hack or genuinly useful.
             if options.policy_add_G_term:
-                G_matrix = graph.value_function_solution.GetSolution(vertex.G_matrix)
-                def eval_G(x):
-                    x_and_1 = np.hstack(([1], x))
-                    return x_and_1.dot(G_matrix).dot(x_and_1)
-                prog.AddCost(eval_G(last_delta))
+                G_expression = graph.value_function_solution.GetSolution(vertex.G_expression)
+                G_expression = G_expression.Substitute({vertex.x[i]: last_delta[i] for i in range(vertex.state_dim)})
+                if terminal_state is not None:
+                    G_expression = G_expression.Substitute({vertex.xt[i]: terminal_state[i] for i in range(vertex.state_dim)})
+                prog.AddCost(G_expression)
 
     if options.policy_solver is None:
         solution = Solve(prog)
