@@ -212,7 +212,7 @@ def visualize_a_trajectory(solution: T.List[T.List[npt.NDArray]],
                            arm_components: ArmComponents = None, 
                            num_timesteps = 1000, 
                            use_rohan_scenario:bool = True, 
-                           debug_t_start:float=None, debug_t_end:float=None):
+                           debug_t_start:float=None, debug_t_end:float=None, recording_name: str = None):
     if debug_t_start is None:
         debug_t_start = 100
     if debug_t_end is None:
@@ -239,6 +239,7 @@ def visualize_a_trajectory(solution: T.List[T.List[npt.NDArray]],
         q_numeric[i] = traj.value(t).flatten()
         q_dot_numeric[i] = traj.EvalDerivative(t, derivative_order=1).flatten()
 
+
     arm_components.meshcat_visualizer.StartRecording()
     for q, q_dot, t in zip(
         q_numeric,
@@ -253,6 +254,11 @@ def visualize_a_trajectory(solution: T.List[T.List[npt.NDArray]],
 
     arm_components.meshcat_visualizer.StopRecording()
     arm_components.meshcat_visualizer.PublishRecording()
+
+    if recording_name is not None:
+        link = arm_components.meshcat.StaticHtml()
+        with open(recording_name + ".html", "w+") as f:
+            f.write(link)
 
 
 def visualize_arm_at_state(state:npt.NDArray, arm_components: ArmComponents = None, use_rohan_scenario = False):
