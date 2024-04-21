@@ -99,6 +99,7 @@ def plot_bezier(
     control_point_color="red",
     name=None,
     linewidth=3,
+    plot_start_point = True
 ):
     showlegend = False
     line_name = ""
@@ -128,17 +129,17 @@ def plot_bezier(
                     showlegend=False,
                 )
             )
-
-        if curve_index == 0:
-            fig.add_trace(
-                go.Scatter(
-                    x=[xx[0, 0]],
-                    y=[xx[0, 1]],
-                    marker_color=bezier_color,
-                    mode="markers",
-                    showlegend=False,
+        if plot_start_point:
+            if curve_index == 0:
+                fig.add_trace(
+                    go.Scatter(
+                        x=[xx[0, 0]],
+                        y=[xx[0, 1]],
+                        marker_color=bezier_color,
+                        mode="markers",
+                        showlegend=False,
+                    )
                 )
-            )
 
     # plot bezier curves
     fig.add_trace(
@@ -154,7 +155,7 @@ def plot_bezier(
     )
 
 
-def plot_a_2d_graph(vertices=T.List[DualVertex]):
+def plot_a_2d_graph(vertices:T.List[DualVertex], width = 800):
     # TODO: assumes that vertices are
     fig = go.Figure()
 
@@ -185,7 +186,7 @@ def plot_a_2d_graph(vertices=T.List[DualVertex]):
             )
         )
 
-    fig.update_layout(height=800, width=800, title_text="Graph view")
+    fig.update_layout(height=width, width=width, title_text="Graph view")
     fig.update_layout(
         yaxis=dict(scaleanchor="x"),  # set y-axis to have the same scaling as x-axis
         yaxis2=dict(

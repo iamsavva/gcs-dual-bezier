@@ -66,6 +66,7 @@ class ProgramOptions:
         # ----------------------------------
         # solver selection for the lookaheads in the policy
         self.policy_solver = None
+        self.gcs_policy_solver = None
         self.policy_use_robust_mosek_params = False
         self.policy_MSK_DPAR_INTPNT_CO_TOL_REL_GAP = 1e-6
         self.policy_MSK_DPAR_INTPNT_CO_TOL_PFEAS = 1e-6

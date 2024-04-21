@@ -150,6 +150,12 @@ def solve_parallelized_convex_restriction(
                                  -np.infty*np.ones( B.shape[0]),
                                  B[:, 0],
                                  x)
+    
+    # def add_eq_lienar_constraint(x:npt.NDArray, y:npt.NDArray):
+    #     prog.AddLinearEqualityConstraint(np.hstack((np.eye(len(x)), -np.eye(len(y)))), 
+    #                                      np.zeros(len(x)),
+    #                                      np.hstack((x,y))
+    #                                      )
 
     for vertex_path in vertex_paths:
 
@@ -168,8 +174,8 @@ def solve_parallelized_convex_restriction(
             if i == len(vertex_path) - 1:
                 # if using terminal heuristic cost:
                 if not options.policy_use_zero_heuristic:
-                    potential = graph.value_function_solution.GetSolution(vertex.potential)
                     if terminal_state is not None:
+                        potential = graph.value_function_solution.GetSolution(vertex.potential)
                         assert isinstance(vertex, GoalConditionedDualVertex)
                         if vertex.vertex_is_target:
                             prog.AddLinearConstraint( eq(last_x, terminal_state)) 
@@ -184,10 +190,18 @@ def solve_parallelized_convex_restriction(
                                 return sub_xt
                             prog.AddQuadraticCost(f_potential(last_x))
                     else:
+                        potential = graph.value_function_solution.GetSolution(vertex.potential)
                         f_potential = lambda x: potential.Substitute(
                             {vertex.x[i]: x[i] for i in range(vertex.state_dim)}
                         )
                         prog.AddQuadraticCost(f_potential(last_x))
+
+                        # if vertex.vertex_is_target:
+                        #     J = vertex.J_matrix
+                        # else:
+                        #     J = graph.value_function_solution.GetSolution(vertex.J_matrix.flatten()).reshape((len(vertex.J_matrix), len(vertex.J_matrix)))
+                        # prog.AddQuadraticCost(2 * J[1:, 1:], J[1:, 0], J[0,0], last_x, True)
+                        
 
                 # assert that next control point is feasible -- for bezier curve continuity
                 if not vertex.vertex_is_target:
@@ -464,9 +478,24 @@ def solve_convex_restriction(
             if options.policy_use_robust_mosek_params:
                 solver_options.SetOption(MosekSolver.id(), "MSK_DPAR_INTPNT_CO_TOL_REL_GAP", 1e-3)
                 solver_options.SetOption(MosekSolver.id(), "MSK_IPAR_INTPNT_SOLVE_FORM", 1)
-
             # solve the program
             solution = mosek_solver.Solve(prog, solver_options=solver_options)
+        elif options.policy_solver == GurobiSolver:
+            gurobi_solver = GurobiSolver()
+            solver_options = SolverOptions()
+            # set the solver tolerance gaps
+            if not one_last_solve:
+                solver_options.SetOption(
+                    GurobiSolver.id(),
+                    "FeasibilityTol",
+                    options.policy_MSK_DPAR_INTPNT_CO_TOL_PFEAS,
+                )
+                solver_options.SetOption(
+                    GurobiSolver.id(),
+                    "OptimalityTol",
+                    options.policy_MSK_DPAR_INTPNT_CO_TOL_DFEAS,
+                )
+            solution = gurobi_solver.Solve(prog, solver_options=solver_options)
         else:
             solution = options.policy_solver().Solve(prog)
 
@@ -525,6 +554,9 @@ def get_optimal_path(
     gcs_options.max_rounding_trials = options.gcs_policy_max_rounding_trials
     gcs_options.preprocessing = options.gcs_policy_use_preprocessing
     gcs_options.max_rounded_paths = options.gcs_policy_max_rounded_paths
+    if options.gcs_policy_solver is not None:
+        gcs_options.solver = options.gcs_policy_solver()
+    # gcs_options.solver = GurobiSolver
 
     # solve
     timer = timeit()
@@ -534,6 +566,8 @@ def get_optimal_path(
     dt = timer.dt("just SolveShortestPath solve time", print_stuff=options.verbose_solve_times)
     assert result.is_success()
     cost = result.get_optimal_cost()
+    if options.verbose_solve_times:
+        diditwork(result)
 
     edge_path = gcs.GetSolutionPath(start_vertex, pseudo_terminal_vertex, result)
     vertex_name_path = []

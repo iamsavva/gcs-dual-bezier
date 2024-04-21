@@ -121,7 +121,7 @@ class DualVertex:
 
     def set_J_matrix(self, J_matrix: npt.NDArray):
         self.J_matrix = J_matrix
-        assert False, "need to write a check to ensure that provided J matrix matches the potential"
+        # assert False, "need to write a check to ensure that provided J matrix matches the potential"
 
 
     def get_hpoly(self) -> HPolyhedron:
@@ -304,8 +304,6 @@ class DualEdge:
         for k in range(self.options.num_control_points - 2):
             x = prog.NewIndeterminates(self.left.state_dim)
             potential, _ = make_potential(x, self.options.pot_type, self.options.potential_poly_deg, prog)
-                
-
             self.x_vectors.append(x)
             # self.J_matrices.append(J_matrix)
             self.potentials.append(potential)
@@ -463,7 +461,7 @@ class PolynomialDualGCS:
         def specific_potential(x):
             x_and_1 = np.hstack(([1], x))
             return x_and_1.dot(specific_J_matrix).dot(x_and_1)
-
+        
         v = DualVertex(
             name,
             self.prog,
@@ -472,6 +470,7 @@ class PolynomialDualGCS:
             specific_potential=specific_potential,
             vertex_is_target=True,
         )
+        v.set_J_matrix(specific_J_matrix)
         # building proper GCS
         self.vertices[name] = v
         return v
