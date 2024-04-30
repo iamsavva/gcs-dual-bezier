@@ -181,8 +181,12 @@ def get_k_step_optimal_path(
     best_cost, best_path, best_vertex_path = np.inf, None, None
     for (vertex_path, bezier_curves) in solutions:
         cost = get_path_cost(graph, vertex_path, bezier_curves, False, True, terminal_state=terminal_state)
+        if graph.options.policy_verbose_choices:
+            WARN([v.name for v in vertex_path], cost)
         if cost < best_cost:
             best_cost, best_path, best_vertex_path = cost, bezier_curves, vertex_path
+    if graph.options.policy_verbose_choices:
+        WARN("---")
     timer.dt("finding best", print_stuff = options.verbose_solve_times)
             
     return best_cost, best_path, best_vertex_path
@@ -202,7 +206,7 @@ def postprocess_the_path(graph:PolynomialDualGCS,
     timer = timeit()
     # solve a convex restriction on the vertex sequence
     if options.postprocess_by_solving_restriction_on_mode_sequence:
-        _, full_path = solve_convex_restriction(graph, vertex_path_so_far, initial_state, initial_previous_state, options, terminal_state=terminal_state, one_last_solve = True)
+        full_path = solve_convex_restriction(graph, vertex_path_so_far, initial_state, initial_previous_state, options, terminal_state=terminal_state, one_last_solve = True)
         # verbose
         if options.verbose_restriction_improvement:
             cost_after = get_path_cost(graph, vertex_path_so_far, full_path, False, True, terminal_state=terminal_state)
@@ -262,7 +266,7 @@ def lookahead_policy(
             state_now,
             state_last,
             options,
-            already_visited=vertex_path_so_far,
+            already_visited = vertex_path_so_far,
             terminal_state = terminal_state,
         )
         if bezier_path is None:
@@ -306,7 +310,6 @@ def lookahead_with_backtracking_policy(
     decision_options[0].put( (0, Node(vertex, initial_state, initial_previous_state, [], [vertex])) )
     num_times_solved_convex_restriction = 0
 
-
     decision_index = 0
     found_target = False
     target_node = None
@@ -332,13 +335,17 @@ def lookahead_with_backtracking_policy(
 
             # for every path -- solve convex restriction, add next states
             for vertex_path in vertex_paths:
-                cost, bezier_curves = solve_convex_restriction(graph, vertex_path, node.state_now, node.state_last, options, terminal_state=terminal_state, one_last_solve=False)
+                bezier_curves = solve_convex_restriction(graph, vertex_path, node.state_now, node.state_last, options, terminal_state=terminal_state, one_last_solve=False)
                 num_times_solved_convex_restriction += 1
-                if np.isfinite(cost):
+                if bezier_curves is not None:
                     next_node = node.extend(bezier_curves[0], vertex_path[1])
+                    add_edge_and_vertex_violations = options.policy_add_violation_penalties
+                    add_terminal_heuristic = not options.policy_use_zero_heuristic
+                    cost = get_path_cost(graph, vertex_path, bezier_curves, add_edge_and_vertex_violations, add_terminal_heuristic, terminal_state)
                     decision_options[decision_index + 1].put( (cost, next_node ))
             decision_index += 1
-            # TODO: make parallelized problem to be always feasible
+
+            # TODO: make parallelized problem be always feasible
 
             # for every path -- solve convex restriction, add next states
             # print(len(vertex_paths))
@@ -349,7 +356,7 @@ def lookahead_with_backtracking_policy(
             # for (vertex_path, bezier_curves) in solutions:
             #     next_node = node.extend(bezier_curves[0], vertex_path[1])
             #     # evaluate the cost
-            #     add_edge_and_vertex_violations = options.policy_add_violation_penalties and not options.policy_use_zero_heuristic
+            #     add_edge_and_vertex_violations = options.policy_add_violation_penalties
             #     add_terminal_heuristic = not options.policy_use_zero_heuristic
             #     cost_of_path = get_path_cost(graph, next_node.vertex_path_so_far, next_node.bezier_path_so_far, add_edge_and_vertex_violations, add_terminal_heuristic, terminal_state=terminal_state)
             #     decision_options[decision_index + 1].put( (cost_of_path, next_node ))
@@ -409,13 +416,13 @@ def cheap_a_star_policy(
             # for every path -- solve convex restriction, add next states
             # print(len(vertex_paths))
             for vertex_path in vertex_paths:
-                cost, bezier_curves = solve_convex_restriction(graph, vertex_path, node.state_now, node.state_last, options, terminal_state=terminal_state, one_last_solve=False)
+                bezier_curves = solve_convex_restriction(graph, vertex_path, node.state_now, node.state_last, options, terminal_state=terminal_state, one_last_solve=False)
                 num_times_solved_convex_restriction += 1
                 # check if solution exists
-                if np.isfinite(cost):
+                if bezier_curves is not None:
                     next_node = node.extend(bezier_curves[0], vertex_path[1])
                     # evaluate the cost
-                    add_edge_and_vertex_violations = options.policy_add_violation_penalties and not options.policy_use_zero_heuristic
+                    add_edge_and_vertex_violations = options.policy_add_violation_penalties
                     add_terminal_heuristic = not options.policy_use_zero_heuristic
                     cost_of_path = get_path_cost(graph, next_node.vertex_path_so_far, next_node.bezier_path_so_far, add_edge_and_vertex_violations, add_terminal_heuristic, terminal_state=terminal_state)
                     que.put( (cost_of_path, next_node) )
@@ -484,7 +491,7 @@ def cheap_a_star_policy_parallelized(
             for (vertex_path, bezier_curves) in solutions:
                 next_node = node.extend(bezier_curves[0], vertex_path[1])
                 # evaluate the cost
-                add_edge_and_vertex_violations = options.policy_add_violation_penalties and not options.policy_use_zero_heuristic
+                add_edge_and_vertex_violations = options.policy_add_violation_penalties
                 add_terminal_heuristic = not options.policy_use_zero_heuristic
                 cost_of_path = get_path_cost(graph, next_node.vertex_path_so_far, next_node.bezier_path_so_far, add_edge_and_vertex_violations, add_terminal_heuristic, terminal_state=terminal_state)
                 que.put( (cost_of_path, next_node) )
@@ -547,7 +554,7 @@ def get_statistics(
     rollout_path, rollout_v_path, rollout_dt = obtain_rollout(graph, lookahead, vertex, state, last_state, terminal_state)
     rollout_cost = get_path_cost(graph, rollout_v_path, rollout_path, False, True, terminal_state)
     if rollout_path is None:
-        WARN("faile to solve for ", state)
+        WARN("failed to solve for ", state)
         return False, None, None, None, None
     if verbose_comparison_to_optimal:
             INFO("policy.  time", np.round(rollout_dt,3), "cost", np.round(rollout_cost, 3))

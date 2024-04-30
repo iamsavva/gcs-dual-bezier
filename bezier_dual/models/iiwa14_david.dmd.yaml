@@ -5,6 +5,7 @@ directives:
     name: iiwa
     # file: package://drake_models/iiwa_description/sdf/iiwa14_primitive_collision.sdf
     file: package://drake_models/iiwa_description/urdf/iiwa14_primitive_collision.urdf
+    # file: package://drake_models/iiwa_description/sdf/iiwa14_polytope_collision.sdf
     # file: package://drake/manipulation/models/iiwa_description/urdf/iiwa14_primitive_collision.urdf
     default_joint_positions:
         iiwa_joint_1: [0]

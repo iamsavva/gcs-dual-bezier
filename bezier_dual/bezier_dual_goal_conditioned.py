@@ -13,6 +13,8 @@ from pydrake.solvers import (  # pylint: disable=import-error, no-name-in-module
     IpoptSolver,
     SolverOptions,
     CommonSolverOption,
+    L2NormCost,
+    Binding,
 )
 from pydrake.geometry.optimization import (  # pylint: disable=import-error, no-name-in-module
     GraphOfConvexSets,
@@ -574,15 +576,17 @@ class GoalConditionedPolynomialDualGCS(PolynomialDualGCS):
         v_right.add_edge_in(edge_name)
         return e
     
-    def export_a_gcs(self, terminal_state:npt.NDArray) -> T.Tuple[GraphOfConvexSets, T.Dict[str, GraphOfConvexSets.Vertex], GraphOfConvexSets.Vertex]:
+    def export_a_gcs(self) -> T.Tuple[GraphOfConvexSets, T.Dict[str, GraphOfConvexSets.Vertex], GraphOfConvexSets.Vertex]:
         gcs = GraphOfConvexSets()
         terminal_vertex = gcs.AddVertex(Hyperrectangle([],[]), "the_terminal_vertex")
         k = self.options.num_control_points
 
         gcs_vertices = dict()
+        state_dim = 0
 
+        # create all the vertices
         for v in self.vertices.values():
-            # add all vertices
+            state_dim = v.state_dim
             if v.vertex_is_target:
                 gcs_v = gcs.AddVertex(v.get_hpoly(), v.name)
                 gcs.AddEdge(gcs_v, terminal_vertex, name = get_edge_name(v.name, terminal_vertex.name()))
@@ -591,35 +595,51 @@ class GoalConditionedPolynomialDualGCS(PolynomialDualGCS):
                 gcs_v = gcs.AddVertex(convex_set, v.name)
             gcs_vertices[v.name] = gcs_v
 
+        A = np.hstack( (np.eye(state_dim),-np.eye(state_dim)) )
+        b = np.zeros(state_dim)
+        cost = L2NormCost(A, b)
+
         for e in self.edges.values():
             left_gcs_v = gcs_vertices[ e.left.name ]
             right_gcs_v = gcs_vertices[ e.right.name ]
             gcs_e = gcs.AddEdge(left_gcs_v, right_gcs_v, e.name)
             # add cost
-            cost = Expression(0)
-            cost_function = e.cost_function
-            for i in range(k-1):
-                left_point = get_kth_control_point(gcs_e.xu(), i, k)
-                right_point = get_kth_control_point(gcs_e.xu(), i+1, k)
-                cost += cost_function(left_point, right_point, terminal_state)
-            gcs_e.AddCost(cost)
-
-            # add bezier curve continuity constraint
-            last_point = get_kth_control_point(gcs_e.xu(), k-1, k)
-            # observe that for target vertices, we just have a single point!
-            if e.right.vertex_is_target:
-                first_point = gcs_e.xv()
+            if self.options.policy_use_l2_norm:
+                for i in range(k-1):
+                    left_point, right_point = get_kth_control_point(gcs_e.xu(), i, k), get_kth_control_point(gcs_e.xu(), i+1, k)
+                    gcs_e.AddCost(Binding[L2NormCost](cost, np.hstack((left_point, right_point))))
             else:
-                first_point = get_kth_control_point(gcs_e.xv(), 0, k)
+                cost = Expression(0)
+                for i in range(k-1):
+                    left_point, right_point = get_kth_control_point(gcs_e.xu(), i, k), get_kth_control_point(gcs_e.xu(), i+1, k)
+                    cost += e.cost_function(left_point, right_point)
+                gcs_e.AddCost(cost)
+
+            # C-0 continuity
+            last_point = get_kth_control_point(gcs_e.xu(), k-1, k)
+            first_point = gcs_e.xv() if e.right.vertex_is_target else get_kth_control_point(gcs_e.xv(), 0, k)
             cons = eq( last_point, first_point )
             for con in cons:
                 gcs_e.AddConstraint(con)
 
-            # add bezier curve smoothness constraint
+            # C-1 continuity
             if not e.right.vertex_is_target:
-                lastlast_point = get_kth_control_point(gcs_e.xu(), k-2, k)
-                second_point = get_kth_control_point(gcs_e.xv(), 1, k)
-                cons = eq( last_point-lastlast_point, second_point-first_point )
+                v0 = (get_kth_control_point(gcs_e.xv(), 1, k) - get_kth_control_point(gcs_e.xv(), 0, k))
+                v_1 = (get_kth_control_point(gcs_e.xu(), k-1, k) - get_kth_control_point(gcs_e.xu(), k-2, k))
+                cons = eq( v0, v_1 )
                 for con in cons:
                     gcs_e.AddConstraint(con)
+
+            # C-2 continuity
+            if self.options.gcs_policy_use_c_2_continuity:
+                if not e.right.vertex_is_target:
+                    v_1 = (get_kth_control_point(gcs_e.xu(), k-1, k) - get_kth_control_point(gcs_e.xu(), k-2, k))
+                    v_2 = (get_kth_control_point(gcs_e.xu(), k-2, k) - get_kth_control_point(gcs_e.xu(), k-3, k))
+
+                    v1 = (get_kth_control_point(gcs_e.xv(), 2, k) - get_kth_control_point(gcs_e.xv(), 1, k))
+                    v0 = (get_kth_control_point(gcs_e.xv(), 1, k) - get_kth_control_point(gcs_e.xv(), 0, k))
+                    cons = eq(v_1 - v_2, v1 - v0)
+                    for con in cons:
+                        gcs_e.AddConstraint(con)
+
         return gcs, gcs_vertices, terminal_vertex

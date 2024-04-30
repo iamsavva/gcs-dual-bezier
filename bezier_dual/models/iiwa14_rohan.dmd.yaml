@@ -1,16 +1,8 @@
 directives:
 - add_model:
     name: iiwa
-    # file: package://drake_models/iiwa_description/sdf/iiwa7_no_collision.sdf
-    # default_joint_positions:
-    #     iiwa_joint_1: [-1.57]
-    #     iiwa_joint_2: [0.1]
-    #     iiwa_joint_3: [0]
-    #     iiwa_joint_4: [-1.2]
-    #     iiwa_joint_5: [0]
-    #     iiwa_joint_6: [1.6]
-    #     iiwa_joint_7: [0]
     file: package://drake_models/iiwa_description/urdf/iiwa14_primitive_collision.urdf
+    # file: package://drake_models/iiwa_description/sdf/iiwa14_polytope_collision.sdf
     default_joint_positions:
         iiwa_joint_1: [0]
         iiwa_joint_2: [0.3]
@@ -31,7 +23,7 @@ directives:
     child: wsg::body
     X_PC:
         translation: [0, 0, 0.114]
-        rotation: !Rpy { deg: [90.0, 0.0, 0.0 ]}
+        rotation: !Rpy { deg: [90.0, 0.0, 90.0 ]}
         # translation: [0, 0, 0.09]
         # rotation: !Rpy { deg: [90, 0, 90]}
 

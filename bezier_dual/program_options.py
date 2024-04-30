@@ -27,7 +27,6 @@ class ProgramOptions:
         self.max_flow_through_edge = 1
         self.policy_lookahead = 1
 
-
         # ----------------------------------
         # MOSEK solver related
         self.use_robust_mosek_parameters = True
@@ -44,14 +43,7 @@ class ProgramOptions:
 
         # ---------------------------------------------
         # parameters specific to bezier curves
-        self.num_control_points = 3
-        self.policy_add_G_term = False
-        self.use_G_term_in_value_synthesis = True
-
-
-        # this should be added automatically if i use corresponding constraints on dual
-        self.policy_add_violation_penalties = False # this doesn't seem to help
-
+        self.num_control_points = 4
         self.postprocess_by_solving_restriction_on_mode_sequence = True
         self.verbose_restriction_improvement = False
 
@@ -86,14 +78,23 @@ class ProgramOptions:
 
         self.verbose_solve_times = False
 
-        self.dont_use_flow_violations = False # TODO: depricated?
-
         self.flow_violation_polynomial_degree = 0
 
-        self.G_poly_type = FREE_POLY
+        self.gcs_policy_use_c_2_continuity = True
+        self.policy_use_l2_norm = False
 
 
+        # ----------------------------------
+        # these should probably be depricated
+        # ----------------------------------
         
+        self.G_poly_type = FREE_POLY
+        # this should be added automatically if i use corresponding constraints on dual
+        self.policy_add_violation_penalties = False # this doesn't seem to help
+        self.policy_add_G_term = False
+        self.use_G_term_in_value_synthesis = True
+
+
         
 
     def vertify_options_validity(self):
