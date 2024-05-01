@@ -225,7 +225,7 @@ def solve_parallelized_convex_restriction(
                                             np.hstack( (bezier_curves[-1][-1], bezier_curves[-1][-2]) ) )
 
                     # C-2 continuity: add constraint that ensures that next-next point is feasible    
-                    if options.gcs_policy_use_c_2_continuity:
+                    if options.policy_use_c_2_continuity:
                         prog.AddLinearConstraint(np.hstack((4*A, -4*A, A)), 
                                                 -np.infty*np.ones( A.shape[0]),
                                                 b,
@@ -260,7 +260,7 @@ def solve_parallelized_convex_restriction(
                             prog.AddQuadraticCost(edge.cost_function(last_x, x_j))
 
                 # C-2 continuity
-                if graph.options.gcs_policy_use_c_2_continuity:
+                if graph.options.policy_use_c_2_continuity:
                     if i > 0:
                         # TODO: fix this
                         v1 = bezier_curve[2] - bezier_curve[1]
@@ -401,7 +401,7 @@ def get_optimal_path(
     """
     if options is None:
         options = graph.options
-        
+
     if terminal_state is not None:
         gcs, vertices, pseudo_terminal_vertex = graph.export_a_gcs(terminal_state)    
     else:

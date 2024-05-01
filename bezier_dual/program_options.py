@@ -80,7 +80,7 @@ class ProgramOptions:
 
         self.flow_violation_polynomial_degree = 0
 
-        self.gcs_policy_use_c_2_continuity = True
+        self.policy_use_c_2_continuity = True
         self.policy_use_l2_norm = False
 
 

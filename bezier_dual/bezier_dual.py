@@ -621,7 +621,7 @@ class PolynomialDualGCS:
                     gcs_e.AddConstraint(con)
 
             # C-2 continuity
-            if self.options.gcs_policy_use_c_2_continuity:
+            if self.options.policy_use_c_2_continuity:
                 if not e.right.vertex_is_target:
                     v_1 = (get_kth_control_point(gcs_e.xu(), k-1, k) - get_kth_control_point(gcs_e.xu(), k-2, k))
                     v_2 = (get_kth_control_point(gcs_e.xu(), k-2, k) - get_kth_control_point(gcs_e.xu(), k-3, k))
