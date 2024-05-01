@@ -159,7 +159,6 @@ def solve_parallelized_convex_restriction(
                                  x)
 
     for vertex_path in vertex_paths:
-
         # initial state
         last_x = prog.NewContinuousVariables(vertex_path[0].state_dim)
         prog.AddLinearConstraint( eq(last_x, state_now))
@@ -172,6 +171,9 @@ def solve_parallelized_convex_restriction(
         last_delta = None
         if state_last is not None:
             last_delta = last_x - state_last
+        # if state_last is not None:
+        #     prog.AddLinearConstraint(eq(last_delta, state_now - state_last))
+        # last_last_delta = None
 
         bezier_curves = []
         
@@ -211,16 +213,25 @@ def solve_parallelized_convex_restriction(
                         
                 # C-1 continuity: add constraint that ensures that next point is feasible
                 if not vertex.vertex_is_target:
-                    # TODO: can i not add the extra variable?
-                    # TODO: can i not add the extra variable?
-                    next_x = prog.NewContinuousVariables(vertex_path[0].state_dim)
-                    prog.AddLinearConstraint(eq(next_x, last_x + last_delta)) 
-                    add_ge_lin_con(vertex.B, next_x)
+                    # next_x = prog.NewContinuousVariables(vertex_path[0].state_dim)
+                    # prog.AddLinearConstraint(eq(next_x, last_x + last_delta)) 
+                    # add_ge_lin_con(vertex.B, next_x)
+                    
+                    A = -vertex.B[:, 1:]
+                    b = vertex.B[:, 0]
+                    prog.AddLinearConstraint(np.hstack((2*A, -A)), 
+                                            -np.infty*np.ones( A.shape[0]),
+                                            b,
+                                            np.hstack( (bezier_curves[-1][-1], bezier_curves[-1][-2]) ) )
+
+                    # C-2 continuity: add constraint that ensures that next-next point is feasible    
+                    if options.gcs_policy_use_c_2_continuity:
+                        prog.AddLinearConstraint(np.hstack((4*A, -4*A, A)), 
+                                                -np.infty*np.ones( A.shape[0]),
+                                                b,
+                                                np.hstack( (bezier_curves[-1][-1], bezier_curves[-1][-2], bezier_curves[-1][-3]) ) )
                 
-                # C-2 continuity: add constraint that ensures that next-next point is feasible
-                # TODO: WRITE ME
-                # TODO: WRITE ME
-                # TODO: WRITE ME
+                
 
             else:
                 # this is not the last vertex in the lookahead. add a bezier curve
@@ -248,14 +259,10 @@ def solve_parallelized_convex_restriction(
                         else:
                             prog.AddQuadraticCost(edge.cost_function(last_x, x_j))
 
-                    # we just added the last point, store last_delta
-                    if j == options.num_control_points - 1:
-                        last_delta = x_j - last_x
-                    last_x = x_j
-
                 # C-2 continuity
                 if graph.options.gcs_policy_use_c_2_continuity:
                     if i > 0:
+                        # TODO: fix this
                         v1 = bezier_curve[2] - bezier_curve[1]
                         v0 = bezier_curve[1] - bezier_curve[0]
                         v_1 = bezier_curves[-1][-1] - bezier_curves[-1][-2]
@@ -263,12 +270,17 @@ def solve_parallelized_convex_restriction(
                         # TODO: IS THIS TAKING TOO MUCH TIME?
                         prog.AddLinearConstraint(eq(v1 - v0, v_1 - v_2))
 
-                # C-1 continuity 
-                if i > 0:
-                    v0 = bezier_curve[1] - bezier_curve[0]
-                    v_1 = bezier_curves[-1][-1] - bezier_curves[-1][-2]
-                    # TODO: IS THIS TAKING TOO MUCH TIME?
-                    prog.AddLinearConstraint(eq(v0, v_1))
+                
+                if last_delta is not None:
+                    if not(i == 0 and options.policy_do_not_add_c_12_constrain_at_next_lookahead):
+                        # C-1 continuity 
+                        v0 = bezier_curve[1] - bezier_curve[0]
+                        v_1 = last_delta
+                        # TODO: IS THIS TAKING TOO MUCH TIME?
+                        prog.AddLinearConstraint(eq(v0, v_1))
+
+                last_x = bezier_curve[-1]
+                last_delta = bezier_curve[-1] - bezier_curve[-2]
                     
                 # store the bezier curve
                 bezier_curves.append(bezier_curve)
@@ -389,7 +401,11 @@ def get_optimal_path(
     """
     if options is None:
         options = graph.options
-    gcs, vertices, pseudo_terminal_vertex = graph.export_a_gcs()    
+        
+    if terminal_state is not None:
+        gcs, vertices, pseudo_terminal_vertex = graph.export_a_gcs(terminal_state)    
+    else:
+        gcs, vertices, pseudo_terminal_vertex = graph.export_a_gcs()    
 
     k = options.num_control_points
 

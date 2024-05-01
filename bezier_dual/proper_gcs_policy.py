@@ -188,7 +188,7 @@ def get_k_step_optimal_path(
     if graph.options.policy_verbose_choices:
         WARN("---")
     timer.dt("finding best", print_stuff = options.verbose_solve_times)
-            
+    
     return best_cost, best_path, best_vertex_path
 
 
@@ -280,6 +280,8 @@ def lookahead_policy(
             first_segment[-1],
             first_segment[-2],
         )
+        # print(first_segment)
+        # print(first_segment[1]-first_segment[0], first_segment[-1]-first_segment[-2])
         vertex_path_so_far.append(vertex_now)
 
     full_path = postprocess_the_path(graph, vertex_path_so_far, full_path, initial_state, initial_previous_state, options, terminal_state)

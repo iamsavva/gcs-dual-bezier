@@ -84,10 +84,12 @@ class ProgramOptions:
         self.policy_use_l2_norm = False
 
 
+        self.policy_do_not_add_c_12_constrain_at_next_lookahead = False
+
         # ----------------------------------
         # these should probably be depricated
         # ----------------------------------
-        
+
         self.G_poly_type = FREE_POLY
         # this should be added automatically if i use corresponding constraints on dual
         self.policy_add_violation_penalties = False # this doesn't seem to help

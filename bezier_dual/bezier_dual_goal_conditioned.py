@@ -576,7 +576,7 @@ class GoalConditionedPolynomialDualGCS(PolynomialDualGCS):
         v_right.add_edge_in(edge_name)
         return e
     
-    def export_a_gcs(self) -> T.Tuple[GraphOfConvexSets, T.Dict[str, GraphOfConvexSets.Vertex], GraphOfConvexSets.Vertex]:
+    def export_a_gcs(self, terminal_state:npt.NDArray) -> T.Tuple[GraphOfConvexSets, T.Dict[str, GraphOfConvexSets.Vertex], GraphOfConvexSets.Vertex]:
         gcs = GraphOfConvexSets()
         terminal_vertex = gcs.AddVertex(Hyperrectangle([],[]), "the_terminal_vertex")
         k = self.options.num_control_points
@@ -612,7 +612,7 @@ class GoalConditionedPolynomialDualGCS(PolynomialDualGCS):
                 cost = Expression(0)
                 for i in range(k-1):
                     left_point, right_point = get_kth_control_point(gcs_e.xu(), i, k), get_kth_control_point(gcs_e.xu(), i+1, k)
-                    cost += e.cost_function(left_point, right_point)
+                    cost += e.cost_function(left_point, right_point, terminal_state)
                 gcs_e.AddCost(cost)
 
             # C-0 continuity
