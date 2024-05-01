@@ -96,9 +96,12 @@ def get_path_cost(
     for index, bezier_curve in enumerate(bezier_path):
         edge = graph.edges[get_edge_name(vertex_path[index].name, vertex_path[index + 1].name)]
         for i in range(len(bezier_curve) - 1):
-            if graph.options.policy_use_l2_norm:
+            if graph.options.policy_use_l2_norm_cost:
                 # use l2 norm
                 cost += np.linalg.norm(bezier_curve[i]-bezier_curve[i + 1])
+            elif graph.options.policy_use_quadratic_cost:
+                delta = bezier_curve[i]-bezier_curve[i + 1]
+                cost += np.linalg.norm(delta.dot(delta))
             else:
                 # use regular cost instead
                 if terminal_state is not None:
@@ -129,8 +132,8 @@ def get_path_cost(
 def solve_parallelized_convex_restriction(
     graph: PolynomialDualGCS,
     vertex_paths: T.List[T.List[DualVertex]],
-    state_now: npt.NDArray,
-    state_last: npt.NDArray = None,
+    initial_state: npt.NDArray,
+    last_bezier_curve: T.List[npt.NDArray] = None,
     options: ProgramOptions = None,
     verbose_failure=False,
     terminal_state:npt.NDArray = None,
@@ -157,24 +160,19 @@ def solve_parallelized_convex_restriction(
                                  -np.infty*np.ones( B.shape[0]),
                                  B[:, 0],
                                  x)
+    if last_bezier_curve is not None:
+        assert np.allclose(last_bezier_curve[-1], initial_state), ERROR(initial_state, last_bezier_curve)
 
     for vertex_path in vertex_paths:
         # initial state
         last_x = prog.NewContinuousVariables(vertex_path[0].state_dim)
-        prog.AddLinearConstraint( eq(last_x, state_now))
+        prog.AddLinearConstraint( eq(last_x, initial_state))
         
         # previous direction of motion -- for bezier curve continuity
-        # TODO: must add last-last delta
-        # TODO: must add last-last delta
-        # TODO: must add last-last delta
-        # TODO: rewrite solve convex restriction to use this code
         last_delta = None
-        if state_last is not None:
-            last_delta = last_x - state_last
-        # if state_last is not None:
-        #     prog.AddLinearConstraint(eq(last_delta, state_now - state_last))
-        # last_last_delta = None
-
+        if last_bezier_curve is not None:
+            last_delta = last_x - last_bezier_curve[-2]
+            
         bezier_curves = []
         
         # for every vertex:
@@ -213,10 +211,6 @@ def solve_parallelized_convex_restriction(
                         
                 # C-1 continuity: add constraint that ensures that next point is feasible
                 if not vertex.vertex_is_target:
-                    # next_x = prog.NewContinuousVariables(vertex_path[0].state_dim)
-                    # prog.AddLinearConstraint(eq(next_x, last_x + last_delta)) 
-                    # add_ge_lin_con(vertex.B, next_x)
-                    
                     A = -vertex.B[:, 1:]
                     b = vertex.B[:, 0]
                     prog.AddLinearConstraint(np.hstack((2*A, -A)), 
@@ -251,8 +245,10 @@ def solve_parallelized_convex_restriction(
                         add_ge_lin_con(vertex.B, x_j)
 
                     # add the cost
-                    if graph.options.policy_use_l2_norm:
+                    if graph.options.policy_use_l2_norm_cost:
                         add_l2_norm(prog, last_x, x_j)
+                    elif graph.options.policy_use_quadratic_cost:
+                        add_quadratic_cost(prog, last_x, x_j)
                     else:
                         if terminal_state is not None:
                             prog.AddQuadraticCost(edge.cost_function(last_x, x_j, terminal_state))
@@ -261,13 +257,16 @@ def solve_parallelized_convex_restriction(
 
                 # C-2 continuity
                 if graph.options.policy_use_c_2_continuity:
-                    if i > 0:
-                        # TODO: fix this
+                    if i > 0 or last_bezier_curve is not None:
                         v1 = bezier_curve[2] - bezier_curve[1]
                         v0 = bezier_curve[1] - bezier_curve[0]
-                        v_1 = bezier_curves[-1][-1] - bezier_curves[-1][-2]
-                        v_2 = bezier_curves[-1][-2] - bezier_curves[-1][-3]
-                        # TODO: IS THIS TAKING TOO MUCH TIME?
+                        if i > 0:
+                            v_1 = bezier_curves[-1][-1] - bezier_curves[-1][-2]
+                            v_2 = bezier_curves[-1][-2] - bezier_curves[-1][-3]
+                        else:
+                            v_1 = last_bezier_curve[-1] - last_bezier_curve[-2]
+                            v_2 = last_bezier_curve[-2] - last_bezier_curve[-3]
+                        # TODO: IS eq and expression parsing TAKING TOO MUCH TIME?
                         prog.AddLinearConstraint(eq(v1 - v0, v_1 - v_2))
 
                 
@@ -276,7 +275,7 @@ def solve_parallelized_convex_restriction(
                         # C-1 continuity 
                         v0 = bezier_curve[1] - bezier_curve[0]
                         v_1 = last_delta
-                        # TODO: IS THIS TAKING TOO MUCH TIME?
+                        # TODO: IS eq and expression parsing TAKING TOO MUCH TIME?
                         prog.AddLinearConstraint(eq(v0, v_1))
 
                 last_x = bezier_curve[-1]
@@ -364,13 +363,13 @@ def solve_convex_restriction(
     graph: PolynomialDualGCS,
     vertex_path: T.List[DualVertex],
     state_now: npt.NDArray,
-    state_last: npt.NDArray = None,
+    last_bezier_curve: T.List[npt.NDArray] = None,
     options: ProgramOptions = None,
     verbose_failure:bool =False,
     terminal_state:npt.NDArray = None,
     one_last_solve = False
 ) -> T.List[T.List[npt.NDArray]]:
-    result = solve_parallelized_convex_restriction(graph, [vertex_path], state_now, state_last, options, verbose_failure, terminal_state, one_last_solve)
+    result = solve_parallelized_convex_restriction(graph, [vertex_path], state_now, last_bezier_curve, options, verbose_failure, terminal_state, one_last_solve)
     if result is None:
         return None
     else:
@@ -383,10 +382,14 @@ def add_l2_norm(prog: MathematicalProgram, x:npt.NDArray, y:npt.NDArray):
     n = len(x)
     A = np.hstack( (np.eye(n), -np.eye(n)) )
     b = np.zeros(n)
-    # add the cost
-    # cost = L2NormCost(A, b)
-    # prog.AddCost(Binding[L2NormCost](cost, np.hstack((x, y))))
     prog.AddL2NormCostUsingConicConstraint(A, b, np.append(x,y))
+
+def add_quadratic_cost(prog: MathematicalProgram, x:npt.NDArray, y:npt.NDArray):
+    n = len(x)
+    Q = 2 * np.vstack((np.hstack( (np.eye(n), -np.eye(n)) ), np.hstack( (-np.eye(n), np.eye(n)) ) ))
+    b = np.zeros(2*n)
+    c = 0
+    prog.AddQuadraticCost(Q, b, c, np.append(x,y), True)
 
 
 def get_optimal_path(

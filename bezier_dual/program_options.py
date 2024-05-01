@@ -81,7 +81,8 @@ class ProgramOptions:
         self.flow_violation_polynomial_degree = 0
 
         self.policy_use_c_2_continuity = True
-        self.policy_use_l2_norm = False
+        self.policy_use_l2_norm_cost = False
+        self.policy_use_quadratic_cost = False
 
 
         self.policy_do_not_add_c_12_constrain_at_next_lookahead = False
@@ -113,7 +114,7 @@ class ProgramOptions:
         assert not np.sum(policy_options) < 1, "must select policy lookahead option"
         assert not np.sum(policy_options) > 1, "selected multiple policy lookahead options"
 
-        # solver_options = np.array([self.solve_with_gurobi, self.solve_with_mosek, self.solve_with_snopt, self.solve_with_clarabel, self.solve_with_osqp])
-        # assert np.sum(solver_options) <= 1, "more than 1 solver option selected"
+        assert not (self.policy_use_l2_norm_cost and self.policy_use_quadratic_cost)
+
 
 

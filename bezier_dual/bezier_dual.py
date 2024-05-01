@@ -593,16 +593,14 @@ class PolynomialDualGCS:
             right_gcs_v = gcs_vertices[ e.right.name ]
             gcs_e = gcs.AddEdge(left_gcs_v, right_gcs_v, e.name)
             # add cost
-            if self.options.policy_use_l2_norm:
-                for i in range(k-1):
-                    left_point, right_point = get_kth_control_point(gcs_e.xu(), i, k), get_kth_control_point(gcs_e.xu(), i+1, k)
+            for i in range(k-1):
+                left_point, right_point = get_kth_control_point(gcs_e.xu(), i, k), get_kth_control_point(gcs_e.xu(), i+1, k)
+                if self.options.policy_use_l2_norm_cost:
                     gcs_e.AddCost(Binding[L2NormCost](cost, np.hstack((left_point, right_point))))
-            else:
-                cost = Expression(0)
-                for i in range(k-1):
-                    left_point, right_point = get_kth_control_point(gcs_e.xu(), i, k), get_kth_control_point(gcs_e.xu(), i+1, k)
-                    cost += e.cost_function(left_point, right_point)
-                gcs_e.AddCost(cost)
+                elif self.options.policy_use_quadratic_cost:
+                    gcs_e.AddCost((left_point-right_point).dot(left_point-right_point))
+                else:
+                    gcs_e.AddCost(e.cost_function(left_point, right_point))
 
 
             # C-0 continuity
