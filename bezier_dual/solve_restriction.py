@@ -211,19 +211,22 @@ def solve_parallelized_convex_restriction(
                         
                 # C-1 continuity: add constraint that ensures that next point is feasible
                 if not vertex.vertex_is_target:
-                    A = -vertex.B[:, 1:]
-                    b = vertex.B[:, 0]
-                    prog.AddLinearConstraint(np.hstack((2*A, -A)), 
-                                            -np.infty*np.ones( A.shape[0]),
-                                            b,
-                                            np.hstack( (bezier_curves[-1][-1], bezier_curves[-1][-2]) ) )
+                    next_x = prog.NewContinuousVariables(vertex_path[0].state_dim)
+                    prog.AddLinearConstraint(eq(next_x, last_x + last_delta)) 
+                    add_ge_lin_con(vertex.B, next_x)
+                    # A = -vertex.B[:, 1:]
+                    # b = vertex.B[:, 0]
+                    # prog.AddLinearConstraint(np.hstack((2*A, -A)), 
+                    #                         -np.infty*np.ones( A.shape[0]),
+                    #                         b,
+                    #                         np.hstack( (bezier_curves[-1][-1], bezier_curves[-1][-2]) ) )
 
                     # C-2 continuity: add constraint that ensures that next-next point is feasible    
-                    if options.policy_use_c_2_continuity:
-                        prog.AddLinearConstraint(np.hstack((4*A, -4*A, A)), 
-                                                -np.infty*np.ones( A.shape[0]),
-                                                b,
-                                                np.hstack( (bezier_curves[-1][-1], bezier_curves[-1][-2], bezier_curves[-1][-3]) ) )
+                    # if options.policy_use_c_2_continuity:
+                    #     prog.AddLinearConstraint(np.hstack((4*A, -4*A, A)), 
+                    #                             -np.infty*np.ones( A.shape[0]),
+                    #                             b,
+                    #                             np.hstack( (bezier_curves[-1][-1], bezier_curves[-1][-2], bezier_curves[-1][-3]) ) )
                 
                 
 
@@ -256,27 +259,32 @@ def solve_parallelized_convex_restriction(
                             prog.AddQuadraticCost(edge.cost_function(last_x, x_j))
 
                 # C-2 continuity
-                if graph.options.policy_use_c_2_continuity:
-                    if i > 0 or last_bezier_curve is not None:
-                        v1 = bezier_curve[2] - bezier_curve[1]
-                        v0 = bezier_curve[1] - bezier_curve[0]
-                        if i > 0:
-                            v_1 = bezier_curves[-1][-1] - bezier_curves[-1][-2]
-                            v_2 = bezier_curves[-1][-2] - bezier_curves[-1][-3]
-                        else:
-                            v_1 = last_bezier_curve[-1] - last_bezier_curve[-2]
-                            v_2 = last_bezier_curve[-2] - last_bezier_curve[-3]
-                        # TODO: IS eq and expression parsing TAKING TOO MUCH TIME?
-                        prog.AddLinearConstraint(eq(v1 - v0, v_1 - v_2))
+                # if graph.options.policy_use_c_2_continuity:
+                #     if i > 0 or last_bezier_curve is not None:
+                #         v1 = bezier_curve[2] - bezier_curve[1]
+                #         v0 = bezier_curve[1] - bezier_curve[0]
+                #         if i > 0:
+                #             v_1 = bezier_curves[-1][-1] - bezier_curves[-1][-2]
+                #             v_2 = bezier_curves[-1][-2] - bezier_curves[-1][-3]
+                #         else:
+                #             v_1 = last_bezier_curve[-1] - last_bezier_curve[-2]
+                #             v_2 = last_bezier_curve[-2] - last_bezier_curve[-3]
+                #         # TODO: IS eq and expression parsing TAKING TOO MUCH TIME?
+                #         prog.AddLinearConstraint(eq(v1 - v0, v_1 - v_2))
 
-                
-                if last_delta is not None:
-                    if not(i == 0 and options.policy_do_not_add_c_12_constrain_at_next_lookahead):
-                        # C-1 continuity 
-                        v0 = bezier_curve[1] - bezier_curve[0]
-                        v_1 = last_delta
-                        # TODO: IS eq and expression parsing TAKING TOO MUCH TIME?
-                        prog.AddLinearConstraint(eq(v0, v_1))
+                if i > 0:
+                    v0 = bezier_curve[1] - bezier_curve[0]
+                    v_1 = bezier_curves[-1][-1] - bezier_curves[-1][-2]
+                    # TODO: IS THIS TAKING TOO MUCH TIME?
+                    prog.AddLinearConstraint(eq(v0, v_1))
+
+                # if last_delta is not None:
+                #     if not(i == 0 and options.policy_do_not_add_c_12_constrain_at_next_lookahead):
+                #         # C-1 continuity 
+                #         v0 = bezier_curve[1] - bezier_curve[0]
+                #         v_1 = last_delta
+                #         # TODO: IS eq and expression parsing TAKING TOO MUCH TIME?
+                #         prog.AddLinearConstraint(eq(v0, v_1))
 
                 last_x = bezier_curve[-1]
                 last_delta = bezier_curve[-1] - bezier_curve[-2]

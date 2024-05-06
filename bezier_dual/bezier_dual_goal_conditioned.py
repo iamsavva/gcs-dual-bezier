@@ -534,6 +534,7 @@ class GoalConditionedPolynomialDualGCS(PolynomialDualGCS):
         
         if options is None:
             options = self.options
+        # TODO FIX ME
         bidirectional_edge_violation = self.prog.NewContinuousVariables(1)[0]
         self.prog.AddLinearConstraint(bidirectional_edge_violation >= 0) 
         # TODO: fix up to make polynomials
