@@ -494,9 +494,9 @@ class PolynomialDualGCS:
         self.prog.AddLinearConstraint(
             bidirectional_edge_violation >= 0
         )  
-        self.prog.AddLinearConstraint(
-            bidirectional_edge_violation == 0
-        )  
+        # self.prog.AddLinearConstraint(
+        #     bidirectional_edge_violation == 0
+        # )  
         # TODO: STILL USING MAX FLOW THROUGH EDGE
         self.prog.AddLinearCost(bidirectional_edge_violation * self.options.max_flow_through_edge)
         

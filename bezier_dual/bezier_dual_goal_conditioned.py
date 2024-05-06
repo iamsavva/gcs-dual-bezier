@@ -543,7 +543,6 @@ class GoalConditionedPolynomialDualGCS(PolynomialDualGCS):
         bidirectional_edge_violation, bidirectional_edge_violation_mat = make_potential(self.xt, PSD_POLY, self.options.flow_violation_polynomial_degree, self.prog)
         self.bidir_flow_violation_matrices.append(bidirectional_edge_violation_mat)
 
-
         self.AddEdge(v_left, v_right, cost_function, options, bidirectional_edge_violation)
         self.AddEdge(v_right, v_left, cost_function, options, bidirectional_edge_violation)
 
