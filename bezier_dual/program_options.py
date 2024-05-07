@@ -80,9 +80,11 @@ class ProgramOptions:
 
         self.flow_violation_polynomial_degree = 0
 
-        self.policy_use_c_2_continuity = True
+        self.policy_use_c_2_continuity = False
         self.policy_use_l2_norm_cost = False
         self.policy_use_quadratic_cost = False
+
+        self.backtracking_iteration_limit = 10000
 
 
         self.policy_do_not_add_c_12_constrain_at_next_lookahead = False
@@ -95,7 +97,7 @@ class ProgramOptions:
         # this should be added automatically if i use corresponding constraints on dual
         self.policy_add_violation_penalties = False # this doesn't seem to help
         self.policy_add_G_term = False
-        self.use_G_term_in_value_synthesis = True
+        self.use_G_term_in_value_synthesis = False
 
 
         

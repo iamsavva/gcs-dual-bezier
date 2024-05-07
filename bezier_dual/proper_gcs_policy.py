@@ -178,7 +178,10 @@ def get_k_step_optimal_path(
     solutions = solve_parallelized_convex_restriction(graph, vertex_paths, state, last_state, options, terminal_state=terminal_state, one_last_solve=False)
     timer.dt("solving", print_stuff = options.verbose_solve_times)
 
+    
     best_cost, best_path, best_vertex_path = np.inf, None, None
+    if solutions is None:
+        return best_cost, best_path, best_vertex_path
     for (vertex_path, bezier_curves) in solutions:
         cost = get_path_cost(graph, vertex_path, bezier_curves, False, True, terminal_state=terminal_state)
         if cost < best_cost:
@@ -310,6 +313,8 @@ def lookahead_with_backtracking_policy(
     decision_index = 0
     found_target = False
     target_node = None
+    number_of_iterations = 0
+
 
     while not found_target:
         if decision_index == -1:
@@ -331,6 +336,12 @@ def lookahead_with_backtracking_policy(
             )
 
             # for every path -- solve convex restriction, add next states
+            number_of_iterations += 1
+            if number_of_iterations >= options.backtracking_iteration_limit:
+                WARN("backtracking ran out of iterations")
+                decision_index = -1
+                return None, None
+            
             for vertex_path in vertex_paths:
                 bezier_curves = solve_convex_restriction(graph, vertex_path, node.state_now, node.state_last, options, terminal_state=terminal_state, one_last_solve=False)
                 num_times_solved_convex_restriction += 1
@@ -339,7 +350,10 @@ def lookahead_with_backtracking_policy(
                     add_terminal_heuristic = not options.policy_use_zero_heuristic
                     next_node = node.extend(bezier_curves[0], vertex_path[1])
                     cost_of_path = get_path_cost(graph, next_node.vertex_path_so_far, next_node.bezier_path_so_far, add_edge_and_vertex_violations, add_terminal_heuristic, terminal_state=terminal_state)
-                    decision_options[decision_index + 1].put( (cost_of_path, next_node ))
+                    try:
+                        decision_options[decision_index + 1].put( (cost_of_path, next_node ))
+                    except:
+                        print(cost_of_path, next_node)
             decision_index += 1
             # TODO: make parallelized problem to be always feasible
 
