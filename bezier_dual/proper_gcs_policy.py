@@ -202,7 +202,7 @@ def postprocess_the_path(graph:PolynomialDualGCS,
     timer = timeit()
     # solve a convex restriction on the vertex sequence
     if options.postprocess_by_solving_restriction_on_mode_sequence:
-        _, full_path = solve_convex_restriction(graph, vertex_path_so_far, initial_state, initial_previous_state, options, terminal_state=terminal_state, one_last_solve = True)
+        full_path = solve_convex_restriction(graph, vertex_path_so_far, initial_state, initial_previous_state, options, terminal_state=terminal_state, one_last_solve = True)
         # verbose
         if options.verbose_restriction_improvement:
             cost_after = get_path_cost(graph, vertex_path_so_far, full_path, False, True, terminal_state=terminal_state)
@@ -332,11 +332,14 @@ def lookahead_with_backtracking_policy(
 
             # for every path -- solve convex restriction, add next states
             for vertex_path in vertex_paths:
-                cost, bezier_curves = solve_convex_restriction(graph, vertex_path, node.state_now, node.state_last, options, terminal_state=terminal_state, one_last_solve=False)
+                bezier_curves = solve_convex_restriction(graph, vertex_path, node.state_now, node.state_last, options, terminal_state=terminal_state, one_last_solve=False)
                 num_times_solved_convex_restriction += 1
-                if np.isfinite(cost):
+                if bezier_curves is not None:
+                    add_edge_and_vertex_violations = options.policy_add_violation_penalties and not options.policy_use_zero_heuristic
+                    add_terminal_heuristic = not options.policy_use_zero_heuristic
                     next_node = node.extend(bezier_curves[0], vertex_path[1])
-                    decision_options[decision_index + 1].put( (cost, next_node ))
+                    cost_of_path = get_path_cost(graph, next_node.vertex_path_so_far, next_node.bezier_path_so_far, add_edge_and_vertex_violations, add_terminal_heuristic, terminal_state=terminal_state)
+                    decision_options[decision_index + 1].put( (cost_of_path, next_node ))
             decision_index += 1
             # TODO: make parallelized problem to be always feasible
 
@@ -409,10 +412,10 @@ def cheap_a_star_policy(
             # for every path -- solve convex restriction, add next states
             # print(len(vertex_paths))
             for vertex_path in vertex_paths:
-                cost, bezier_curves = solve_convex_restriction(graph, vertex_path, node.state_now, node.state_last, options, terminal_state=terminal_state, one_last_solve=False)
+                bezier_curves = solve_convex_restriction(graph, vertex_path, node.state_now, node.state_last, options, terminal_state=terminal_state, one_last_solve=False)
                 num_times_solved_convex_restriction += 1
                 # check if solution exists
-                if np.isfinite(cost):
+                if bezier_curves is not None:
                     next_node = node.extend(bezier_curves[0], vertex_path[1])
                     # evaluate the cost
                     add_edge_and_vertex_violations = options.policy_add_violation_penalties and not options.policy_use_zero_heuristic
