@@ -86,9 +86,6 @@ class ProgramOptions:
 
         self.backtracking_iteration_limit = 10000
 
-
-        self.policy_do_not_add_c_12_constrain_at_next_lookahead = False
-
         # ----------------------------------
         # these should probably be depricated
         # ----------------------------------
