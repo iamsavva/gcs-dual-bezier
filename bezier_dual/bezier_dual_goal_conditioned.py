@@ -327,7 +327,6 @@ class GoalConditionedDualEdge(DualEdge):
             x_and_xt = np.hstack((x, xt))
             potential, _ = make_potential(x_and_xt, self.options.pot_type, self.options.potential_poly_deg, prog)
             self.x_vectors.append(x)
-            # self.J_matrices.append(J_matrix)
             self.potentials.append(potential)
 
         # -----------------------------------------------
@@ -477,13 +476,14 @@ class GoalConditionedPolynomialDualGCS(PolynomialDualGCS):
         if not self.pushing_up:
             self.pushing_up = True
 
+        # add penalty cost on vertex penelties
         for v in self.vertices.values():
            v.push_down_on_flow_violation(self.prog, terminal_moment_matrix)
 
+        # add penalty cost on edge penelties
         for mat in self.bidir_flow_violation_matrices:
             self.prog.AddLinearCost( np.sum(mat * terminal_moment_matrix))
 
-        
 
     def AddTargetVertex(
         self,
@@ -535,10 +535,10 @@ class GoalConditionedPolynomialDualGCS(PolynomialDualGCS):
         if options is None:
             options = self.options
         # TODO FIX ME
-        bidirectional_edge_violation = self.prog.NewContinuousVariables(1)[0]
-        self.prog.AddLinearConstraint(bidirectional_edge_violation >= 0) 
-        # TODO: fix up to make polynomials
-        self.prog.AddLinearCost(bidirectional_edge_violation * self.options.max_flow_through_edge)
+        # bidirectional_edge_violation = self.prog.NewContinuousVariables(1)[0]
+        # self.prog.AddLinearConstraint(bidirectional_edge_violation >= 0) 
+        # # TODO: fix up to make polynomials
+        # self.prog.AddLinearCost(bidirectional_edge_violation * self.options.max_flow_through_edge)
 
         bidirectional_edge_violation, bidirectional_edge_violation_mat = make_potential(self.xt, PSD_POLY, self.options.flow_violation_polynomial_degree, self.prog)
         self.bidir_flow_violation_matrices.append(bidirectional_edge_violation_mat)
@@ -557,7 +557,8 @@ class GoalConditionedPolynomialDualGCS(PolynomialDualGCS):
         """
         Options will default to graph initialized options if not specified
         """
-        # print(v_left.name, v_right.name)
+        if self.pushing_up:
+            raise Exception("adding bidir edges after pushing up, bad")
         if options is None:
             options = self.options
         edge_name = get_edge_name(v_left.name, v_right.name)

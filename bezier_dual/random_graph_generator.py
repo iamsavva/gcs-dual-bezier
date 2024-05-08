@@ -135,8 +135,8 @@ def random_uniform_graph_generator(
 
 def random_uniform_graph_generator_goal_conditioned(
     options: ProgramOptions,
-    use_bidirecitonal_edges=True,
-    cost_function=QUADRATIC_COST_GC,
+    use_bidirecitonal_edges,
+    cost_function,
     num_layers: int = 5,
     x_min: float = 0,
     x_max: float = 10,
