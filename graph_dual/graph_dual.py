@@ -23,6 +23,7 @@ from pydrake.geometry.optimization import (  # pylint: disable=import-error, no-
     Point,
     ConvexSet,
     Hyperrectangle,
+    Hyperellipsoid
 )
 import numbers
 import pydot
@@ -95,7 +96,6 @@ class DualVertex:
         self.potential = Expression(0)
         self.J_matrix = None
 
-        # TODO: handle ellipsoids exactly
         # TODO: handle points exactly
         
         self.convex_set = convex_set
@@ -105,6 +105,9 @@ class DualVertex:
         elif isinstance(convex_set, Hyperrectangle):
             self.set_type = Hyperrectangle
             self.state_dim = convex_set.lb().shape[0]
+        elif isinstance(convex_set, Hyperellipsoid):
+            self.set_type = Hyperellipsoid
+            self.state_dim = len(convex_set.center())
         else:
             self.set_type = None
             self.state_dim = None
@@ -122,12 +125,12 @@ class DualVertex:
 
 
     def get_hpoly(self) -> HPolyhedron:
-        # TODO: fix me, shouldn't be using this
         assert self.set_type in (HPolyhedron, Hyperrectangle), "can't get hpoly for set"
         if self.set_type == HPolyhedron:
             return self.convex_set
         if self.set_type == Hyperrectangle:
             return self.convex_set.MakeHPolyhedron()
+        raise Exception("shouldn't be calling this on other sets!")
 
     def add_edge_in(self, name: str):
         assert name not in self.edges_in
@@ -153,11 +156,24 @@ class DualVertex:
         """
         Assuming that sets are polyhedrons
         """
-        # TODO: just handle ellipsoids explicitly
-        hpoly = self.get_hpoly()
-        # inequalities of the form b[i] - a.T x = g_i(x) >= 0
-        A, b = hpoly.A(), hpoly.b()
-        self.B = np.hstack((b.reshape((len(b), 1)), -A))
+        if self.set_type in (Hyperrectangle, HPolyhedron):
+            hpoly = self.get_hpoly()
+            # inequalities of the form b[i] - a.T x = g_i(x) >= 0
+            A, b = hpoly.A(), hpoly.b()
+            self.B = np.hstack((b.reshape((len(b), 1)), -A))
+            self.E = None
+        elif isinstance(self.convex_set, Hyperellipsoid):
+            self.B = None
+            mu = self.convex_set.center()
+            A = self.convex_set.A()
+            c11 = 1 - mu.T.dot(A.T).dot(A).dot(mu)
+            c12 = mu.T.dot(A.T).dot(A)
+            c21 = A.T.dot(A).dot(mu).reshape((len(mu), 1))
+            c22 = -A.T.dot(A)
+            self.E = np.vstack((np.hstack((c11,c12)), np.hstack((c21,c22))))
+        else:
+            raise Exception("set type not supported")
+
         
 
     def define_potential(self, prog: MathematicalProgram, specific_potential: T.Callable = None):
@@ -258,6 +274,7 @@ class DualEdge:
         # TODO: fix this for ellipsoids
         x_left, x_right = self.left.x,  self.right.x
         B_left, B_right = self.left.B, self.right.B
+        E_left, E_right = self.left.E, self.right.E
         edge_cost = self.cost_function(x_left, x_right)
         left_potential = self.left.potential
         right_potential = self.right.potential
@@ -269,7 +286,8 @@ class DualEdge:
             + self.bidirectional_edge_violation
             + self.right.total_flow_in_violation
         )
-        define_sos_constraint_over_polyhedron_multivar(prog, [x_left, x_right], [B_left, B_right], expr, opt)
+
+        define_sos_constraint_over_polyhedron_multivar(prog, [x_left, x_right], [B_left, B_right], expr, opt, [E_left, E_right])
 
 
 class PolynomialDualGCS:
@@ -478,14 +496,11 @@ class PolynomialDualGCS:
         for v in self.vertices.values():
             state_dim = v.state_dim
             # add all vertices
+            gcs_v = gcs.AddVertex(v.convex_set, v.name)
             if v.vertex_is_target:
-                gcs_v = gcs.AddVertex(v.get_hpoly(), v.name)
                 # NOTE: we add the terminal cost here
                 gcs_v.AddCost( v.cost_at_point( gcs_v.x() ) )
                 gcs.AddEdge(gcs_v, terminal_vertex, name = get_edge_name(v.name, terminal_vertex.name()))
-            else:    
-                convex_set = v.get_hpoly()
-                gcs_v = gcs.AddVertex(convex_set, v.name)
             gcs_vertices[v.name] = gcs_v
 
 

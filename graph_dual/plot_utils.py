@@ -168,7 +168,8 @@ def get_ellipse(mu, sigma):
     mu = np.array(mu).reshape((2,1))
     theta = np.linspace(0, 2*np.pi, 1000)
     ellipse = (np.sqrt(eigenvalues[None,:]) * eigenvectors) @ [np.sin(theta), np.cos(theta)] + mu
-    xs=ellipse[0,:], ys=ellipse[1,:]
+    xs=ellipse[0,:]
+    ys=ellipse[1,:]
     return xs,ys
 
 def plot_a_2d_graph(vertices:T.List[DualVertex], width = 800):

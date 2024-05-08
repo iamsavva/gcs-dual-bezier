@@ -190,6 +190,8 @@ class GoalConditionedDualVertex(DualVertex):
         # inequalities of the form b[i] - a.T x = g_i(x) >= 0
         A, b = hpoly.A(), hpoly.b()
         self.B_terminal = np.hstack((b.reshape((len(b), 1)), -A))
+
+        self.E = None # TODO: fix me
         
 
     def define_potential(self, prog: MathematicalProgram):
@@ -281,6 +283,7 @@ class GoalConditionedDualEdge(DualEdge):
         # J_{v} to J_{vw,1}
         x_left, x_right = self.left.x, self.right.x
         B_left, B_right = self.left.B, self.right.B
+        E_left, E_right, E_t = self.left.E, self.right.E, None
         edge_cost = self.cost_function(x_left, x_right, xt)
         left_potential = self.left.potential
         right_potential = self.right.potential
@@ -294,7 +297,7 @@ class GoalConditionedDualEdge(DualEdge):
                 + self.bidirectional_edge_violation
                 + self.right.total_flow_in_violation
             )
-            define_sos_constraint_over_polyhedron_multivar(prog, [x_left, xt], [B_left, Bt], expr, opt)
+            define_sos_constraint_over_polyhedron_multivar(prog, [x_left, xt], [B_left, Bt], expr, opt, [E_left, E_right])
         else:
             expr = (
                 edge_cost
@@ -303,7 +306,7 @@ class GoalConditionedDualEdge(DualEdge):
                 + self.bidirectional_edge_violation
                 + self.right.total_flow_in_violation
             )
-            define_sos_constraint_over_polyhedron_multivar(prog, [x_left, x_right, xt], [B_left, B_right, Bt], expr, opt)
+            define_sos_constraint_over_polyhedron_multivar(prog, [x_left, x_right, xt], [B_left, B_right, Bt], expr, opt, [E_left, E_right, E_t])
 
 
 class GoalConditionedPolynomialDualGCS(PolynomialDualGCS):
@@ -490,12 +493,9 @@ class GoalConditionedPolynomialDualGCS(PolynomialDualGCS):
         # create all the vertices
         for v in self.vertices.values():
             state_dim = v.state_dim
+            gcs_v = gcs.AddVertex(v.convex_set, v.name)
             if v.vertex_is_target:
-                gcs_v = gcs.AddVertex(v.get_hpoly(), v.name)
                 gcs.AddEdge(gcs_v, terminal_vertex, name = get_edge_name(v.name, terminal_vertex.name()))
-            else:    
-                convex_set = v.get_hpoly()
-                gcs_v = gcs.AddVertex(convex_set, v.name)
             gcs_vertices[v.name] = gcs_v
 
         A = np.hstack( (np.eye(state_dim),-np.eye(state_dim)) )

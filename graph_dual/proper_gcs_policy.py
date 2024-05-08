@@ -202,6 +202,7 @@ def postprocess_the_path(graph:PolynomialDualGCS,
     timer = timeit()
     # solve a convex restriction on the vertex sequence
     if options.postprocess_by_solving_restriction_on_mode_sequence:
+        print("postprocessing")
         full_path = solve_convex_restriction(graph, vertex_path_so_far, initial_state, options, terminal_state=terminal_state, one_last_solve = True)
         # verbose
         if options.verbose_restriction_improvement:
@@ -595,6 +596,7 @@ def plot_optimal_and_rollout(
 
     
     rollout_path, rollout_v_path, dt = obtain_rollout(graph, lookahead, vertex, state, terminal_state)
+    print(rollout_path)
 
     if rollout_path is None:
         return False, dt
@@ -622,3 +624,36 @@ def plot_optimal_and_rollout(
             rollout_cost = get_path_cost(graph, rollout_v_path, rollout_path, False, True, terminal_state)
             INFO("policy.  time", np.round(dt,3), "cost", np.round(rollout_cost, 3))
     return True, dt
+
+
+def plot_optimal(
+    fig: go.Figure,
+    graph: PolynomialDualGCS,
+    vertex: DualVertex,
+    state: npt.NDArray,
+    optimal_color:str="blue",
+    plot_control_points:bool=True,
+    plot_start_point:bool = True,
+    linewidth:int=3,
+    verbose_comparison_to_optimal:bool = False,
+    terminal_state: npt.NDArray = None,
+) -> T.Tuple[bool, float]:
+    """
+    rollout the policy from the initial condition, plot it out on a given figure`
+    return whether the problem solved successfully + how long it took to solve for the tajectory.
+    """
+    # TODO: drop this, this is repeated
+    options = graph.options
+    options.vertify_options_validity()
+
+    optimal_dt, _, optimal_path, optimal_v_path = get_optimal_path(graph, vertex, state, options, terminal_state)
+    if verbose_comparison_to_optimal:
+        optimal_cost = get_path_cost(graph, optimal_v_path, optimal_path, False, True, terminal_state)
+        INFO("optimal. time", np.round(optimal_dt,3), "cost", np.round(optimal_cost, 3))
+        INFO("----")
+
+    if plot_control_points:
+        plot_bezier(fig, optimal_path, optimal_color, optimal_color, name="optimal",linewidth=linewidth, plot_start_point=plot_start_point)
+    else:
+        plot_bezier(fig, optimal_path, optimal_color, None, name="optimal",linewidth=linewidth, plot_start_point=plot_start_point)
+    return True, optimal_dt

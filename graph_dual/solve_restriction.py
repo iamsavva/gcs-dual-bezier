@@ -128,7 +128,7 @@ def solve_parallelized_convex_restriction(
     vertex_paths: T.List[T.List[DualVertex]],
     state_now: npt.NDArray,
     options: ProgramOptions = None,
-    verbose_failure=False,
+    verbose_failure=True,
     terminal_state:npt.NDArray = None,
     one_last_solve:bool = False,
     verbose_solve_success = True
@@ -166,7 +166,17 @@ def solve_parallelized_convex_restriction(
         # for every vertex:
         for i, vertex in enumerate(vertex_path):
             x = prog.NewContinuousVariables(vertex_path[0].state_dim)
-            add_ge_lin_con(vertex.B, x)
+            if vertex.B is not None:
+                add_ge_lin_con(vertex.B, x)
+            if vertex.E is not None:
+                # TODO: fix me for solve times
+                # x_and_1 = np.hstack(([1], x))
+                # prog.AddConstraint( np.sum(vertex.E*np.outer(x_and_1, x_and_1))>= 0, )
+                lhs = (vertex.convex_set.A().dot(x) - vertex.convex_set.A().dot(vertex.convex_set.center()))
+                rhs = 1
+                prog.AddLorentzConeConstraint(np.hstack((rhs, lhs)))
+
+                # prog.AddQuadraticConstraint( np.sum(vertex.E*np.outer(x_and_1, x_and_1)), 0, np.inf)
 
             if i == 0:
                 prog.AddLinearConstraint( eq(x, state_now))
@@ -270,7 +280,7 @@ def solve_parallelized_convex_restriction(
             final_result.append(full_tuple)
         return final_result
     else:
-        WARN("failed to solve",verbose = verbose_solve_success)
+        WARN("failed to solve", verbose = verbose_solve_success)
         if verbose_failure:
             diditwork(solution)
         return None
