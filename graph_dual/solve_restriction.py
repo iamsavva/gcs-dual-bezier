@@ -167,21 +167,38 @@ def solve_parallelized_convex_restriction(
         for i, vertex in enumerate(vertex_path):
             x = prog.NewContinuousVariables(vertex_path[0].state_dim)
             if vertex.B is not None:
-                add_ge_lin_con(vertex.B, x)
+                # add_ge_lin_con(vertex.B, x)
+                hpoly = vertex.get_hpoly()
+                prog.AddLinearConstraint(le(hpoly.A().dot(x), hpoly.b()))
             if vertex.E is not None:
                 # TODO: fix me for solve times
                 # x_and_1 = np.hstack(([1], x))
                 # prog.AddConstraint( np.sum(vertex.E*np.outer(x_and_1, x_and_1))>= 0, )
                 lhs = (vertex.convex_set.A().dot(x) - vertex.convex_set.A().dot(vertex.convex_set.center()))
-                rhs = 1
+                rhs = [1]
                 prog.AddLorentzConeConstraint(np.hstack((rhs, lhs)))
 
                 # prog.AddQuadraticConstraint( np.sum(vertex.E*np.outer(x_and_1, x_and_1)), 0, np.inf)
 
             if i == 0:
                 prog.AddLinearConstraint( eq(x, state_now))
-            elif i == len(vertex_path) - 1:
-                
+            else:
+                bezier_curve = [last_x, x]
+                bezier_curves.append(bezier_curve)
+                edge = graph.edges[get_edge_name(vertex_path[i - 1].name, vertex.name)]
+
+                # add the cost
+                if graph.options.policy_use_l2_norm_cost:
+                    add_l2_norm(prog, last_x, x)
+                elif graph.options.policy_use_quadratic_cost:
+                    add_quadratic_cost(prog, last_x, x)
+                else:
+                    if terminal_state is not None:
+                        prog.AddQuadraticCost(edge.cost_function(last_x, x, terminal_state))
+                    else:
+                        prog.AddQuadraticCost(edge.cost_function(last_x, x))
+
+            if i == len(vertex_path) - 1:  
                 # if using terminal heuristic cost:
                 if not options.policy_use_zero_heuristic:
                     if terminal_state is not None:
@@ -209,26 +226,6 @@ def solve_parallelized_convex_restriction(
                             {vertex.x[i]: x[i] for i in range(vertex.state_dim)}
                         )
                         prog.AddQuadraticCost(f_potential(x))
-                bezier_curve = [last_x, x]
-                bezier_curves.append(bezier_curve)
-            else:
-                bezier_curve = [last_x, x]
-                bezier_curves.append(bezier_curve)
-                edge = graph.edges[get_edge_name(vertex_path[i - 1].name, vertex.name)]
-
-                # add the cost
-                if graph.options.policy_use_l2_norm_cost:
-                    add_l2_norm(prog, last_x, x)
-                elif graph.options.policy_use_quadratic_cost:
-                    add_quadratic_cost(prog, last_x, x)
-                else:
-                    if terminal_state is not None:
-                        prog.AddQuadraticCost(edge.cost_function(last_x, x, terminal_state))
-                    else:
-                        prog.AddQuadraticCost(edge.cost_function(last_x, x))
-
-                # # store the bezier curve
-                # bezier_curves.append(bezier_curve)
 
             last_x = x
 
@@ -240,34 +237,7 @@ def solve_parallelized_convex_restriction(
     if options.policy_solver is None:
         solution = Solve(prog)
     else:
-        if options.policy_solver == MosekSolver:
-            mosek_solver = MosekSolver()
-            solver_options = SolverOptions()
-            # set the solver tolerance gaps
-            if not one_last_solve:
-                solver_options.SetOption(
-                    MosekSolver.id(),
-                    "MSK_DPAR_INTPNT_CO_TOL_REL_GAP",
-                    options.policy_MSK_DPAR_INTPNT_CO_TOL_REL_GAP,
-                )
-                solver_options.SetOption(
-                    MosekSolver.id(),
-                    "MSK_DPAR_INTPNT_CO_TOL_PFEAS",
-                    options.policy_MSK_DPAR_INTPNT_CO_TOL_PFEAS,
-                )
-                solver_options.SetOption(
-                    MosekSolver.id(),
-                    "MSK_DPAR_INTPNT_CO_TOL_DFEAS",
-                    options.policy_MSK_DPAR_INTPNT_CO_TOL_DFEAS,
-                )
-            if options.policy_use_robust_mosek_params:
-                solver_options.SetOption(MosekSolver.id(), "MSK_DPAR_INTPNT_CO_TOL_REL_GAP", 1e-3)
-                solver_options.SetOption(MosekSolver.id(), "MSK_IPAR_INTPNT_SOLVE_FORM", 1)
-
-            # solve the program
-            solution = mosek_solver.Solve(prog, solver_options=solver_options)
-        else:
-            solution = options.policy_solver().Solve(prog)
+        solution = options.policy_solver().Solve(prog)
 
     timer.dt("just solving", print_stuff=options.verbose_solve_times)
 

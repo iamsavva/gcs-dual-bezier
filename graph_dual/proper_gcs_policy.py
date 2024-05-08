@@ -227,8 +227,13 @@ class Node:
         self.vertex_path_so_far = vertex_path_so_far
 
     def extend(self, next_bezier_curve: T.List[npt.NDArray], next_vertex: DualVertex) -> "Node":
+        next_point = next_bezier_curve[-1]
+        if not next_vertex.convex_set.PointInSet(next_point):
+            # point not in set, need to project due to bad numerics
+            next_point = next_vertex.convex_set.Projection(next_point)[1].flatten()
+
         return Node(next_vertex, 
-                    next_bezier_curve[-1], 
+                    next_point,
                     self.bezier_path_so_far + [next_bezier_curve], 
                     self.vertex_path_so_far + [next_vertex]
                     )
@@ -244,6 +249,7 @@ def lookahead_policy(
     K-step lookahead rollout policy.
     Returns a list of bezier curves. Each bezier curve is a list of control points (numpy arrays).
     """
+    INFO("running lookahead")
     if options is None:
         options = graph.options
     options.vertify_options_validity()
@@ -292,6 +298,7 @@ def lookahead_with_backtracking_policy(
     -- backtrack to the last state when some action was available.
     Returns a list of bezier curves. Each bezier curve is a list of control points (numpy arrays).
     """
+    INFO("running lookahead backtracking")
     if options is None:
         options = graph.options
     options.vertify_options_validity()
@@ -326,6 +333,9 @@ def lookahead_with_backtracking_policy(
             vertex_paths = get_all_n_step_paths_no_revisits(
                 graph, options.policy_lookahead, node.vertex_now, node.vertex_path_so_far
             )
+            # print("vertex paths at vertex ", node.vertex_now.name)
+            # for v_path in vertex_paths:
+            #     print([v.name for v in v_path])
 
             # for every path -- solve convex restriction, add next states
             number_of_iterations += 1
@@ -336,6 +346,9 @@ def lookahead_with_backtracking_policy(
             
             for vertex_path in vertex_paths:
                 bezier_curves = solve_convex_restriction(graph, vertex_path, node.state_now, options, terminal_state=terminal_state, one_last_solve=False)
+                # print(node.state_now, node.vertex_now.convex_set.PointInSet(node.state_now))
+                # print([v.name for v in vertex_path])
+                # print(bezier_curves)
                 num_times_solved_convex_restriction += 1
                 if bezier_curves is not None:
                     add_edge_and_vertex_violations = False
@@ -346,6 +359,7 @@ def lookahead_with_backtracking_policy(
                         decision_options[decision_index + 1].put( (cost_of_path, next_node ))
                     except:
                         print(cost_of_path, next_node)
+            # print("------ next")
             decision_index += 1
             # TODO: make parallelized problem to be always feasible
 
@@ -531,6 +545,8 @@ def obtain_rollout(
         rollout_path, v_path = cheap_a_star_policy(graph, vertex, state, options, terminal_state)
     elif options.use_cheap_a_star_policy_parallelized:
         rollout_path, v_path = cheap_a_star_policy_parallelized(graph, vertex, state, options, terminal_state)
+    else:
+        raise Exception("not selected policy")
         
     dt = timer.dt(print_stuff = False)
     return rollout_path, v_path, dt
@@ -596,7 +612,8 @@ def plot_optimal_and_rollout(
 
     
     rollout_path, rollout_v_path, dt = obtain_rollout(graph, lookahead, vertex, state, terminal_state)
-    print(rollout_path)
+    # print(rollout_path)
+    # print([v.name for v in rollout_v_path])
 
     if rollout_path is None:
         return False, dt
@@ -608,6 +625,8 @@ def plot_optimal_and_rollout(
 
     if plot_optimal:
         optimal_dt, _, optimal_path, optimal_v_path = get_optimal_path(graph, vertex, state, options, terminal_state)
+        # print(optimal_path)
+        # print([v.name for v in optimal_v_path])
         if verbose_comparison_to_optimal:
             rollout_cost = get_path_cost(graph, rollout_v_path, rollout_path, False, True, terminal_state)
             optimal_cost = get_path_cost(graph, optimal_v_path, optimal_path, False, True, terminal_state)

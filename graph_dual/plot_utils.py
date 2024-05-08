@@ -207,16 +207,23 @@ def plot_a_2d_graph(vertices:T.List[DualVertex], width = 800):
 
     for v in vertices:
         add_trace(v.convex_set)
-        # center = (v.convex_set.lb() + v.convex_set.ub()) / 2
-        # fig.add_trace(
-        #     go.Scatter(
-        #         x=[center[0]],
-        #         y=[center[1]],
-        #         mode="text",
-        #         text=[v.name],
-        #         showlegend=False,
-        #     )
-        # )
+        if isinstance(v.convex_set, Hyperrectangle):
+            center = (v.convex_set.lb() + v.convex_set.ub()) / 2
+        elif isinstance(v.convex_set, HPolyhedron):
+            vertices = get_clockwise_vertices(VPolytope(v.convex_set))
+            center = np.mean(vertices, axis=1)
+        elif isinstance(v.convex_set, Hyperellipsoid):
+            center = v.convex_set.center()
+
+        fig.add_trace(
+            go.Scatter(
+                x=[center[0]],
+                y=[center[1]],
+                mode="text",
+                text=[v.name],
+                showlegend=False,
+            )
+        )
 
     fig.update_layout(height=width, width=width, title_text="Graph view")
     fig.update_layout(

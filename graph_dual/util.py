@@ -212,3 +212,5 @@ def make_moment_matrix(m0, m1:npt.NDArray, m2:npt.NDArray):
     assert m2.shape == (len(m1), len(m1))
     assert m1.shape == (len(m1),)
     return np.vstack((np.hstack((m0, m1)), np.hstack( (m1.reshape((len(m1),1)), m2) )))
+
+# def project_to_set
