@@ -597,8 +597,11 @@ def plot_optimal_and_rollout(
     plot_control_points:bool=True,
     plot_start_point:bool = True,
     linewidth:int=3,
+    marker_size:int=3,
     verbose_comparison_to_optimal:bool = False,
     terminal_state: npt.NDArray = None,
+    optimal_name = "optimal",
+    rollout_name = "rollout"
 ) -> T.Tuple[bool, float]:
     """
     rollout the policy from the initial condition, plot it out on a given figure`
@@ -617,11 +620,6 @@ def plot_optimal_and_rollout(
 
     if rollout_path is None:
         return False, dt
-    
-    if plot_control_points:
-        plot_bezier(fig, rollout_path, rollout_color, rollout_color, name="rollout", linewidth=linewidth, plot_start_point=plot_start_point)
-    else:
-        plot_bezier(fig, rollout_path, rollout_color, None, name="rollout",linewidth=linewidth, plot_start_point=plot_start_point)
 
     if plot_optimal:
         optimal_dt, _, optimal_path, optimal_v_path = get_optimal_path(graph, vertex, state, options, terminal_state)
@@ -635,13 +633,17 @@ def plot_optimal_and_rollout(
             INFO("----")
 
         if plot_control_points:
-            plot_bezier(fig, optimal_path, optimal_color, optimal_color, name="optimal",linewidth=linewidth, plot_start_point=plot_start_point)
+            plot_bezier(fig, optimal_path, optimal_color, optimal_color, name=optimal_name,linewidth=linewidth, marker_size=marker_size, plot_start_point=plot_start_point)
         else:
-            plot_bezier(fig, optimal_path, optimal_color, None, name="optimal",linewidth=linewidth, plot_start_point=plot_start_point)
+            plot_bezier(fig, optimal_path, optimal_color, None, name=optimal_name,linewidth=linewidth, marker_size=marker_size, plot_start_point=plot_start_point)
     else:
         if verbose_comparison_to_optimal:
             rollout_cost = get_path_cost(graph, rollout_v_path, rollout_path, False, True, terminal_state)
             INFO("policy.  time", np.round(dt,3), "cost", np.round(rollout_cost, 3))
+    if plot_control_points:
+        plot_bezier(fig, rollout_path, rollout_color, rollout_color, name=rollout_name, linewidth=linewidth, marker_size=marker_size, plot_start_point=plot_start_point)
+    else:
+        plot_bezier(fig, rollout_path, rollout_color, None, name=rollout_name,linewidth=linewidth, marker_size=marker_size, plot_start_point=plot_start_point)
     return True, dt
 
 

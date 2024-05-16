@@ -101,6 +101,7 @@ def plot_bezier(
     control_point_color="red",
     name=None,
     linewidth=3,
+    marker_size = 3,
     plot_start_point = True
 ):
     showlegend = False
@@ -110,6 +111,7 @@ def plot_bezier(
         showlegend = True
 
     full_path = None
+    first = True
     for curve_index, bezier_curve in enumerate(bezier_curves):
         X = np.array(bezier_curve)
         tt = np.linspace(0, 1, 100)
@@ -119,16 +121,45 @@ def plot_bezier(
         else:
             full_path = np.vstack((full_path, xx))
 
+        # plot bezier curves
+        fig.add_trace(
+            go.Scatter(
+                x=full_path[:, 0],
+                y=full_path[:, 1],
+                marker_color=bezier_color,
+                line=dict(width=linewidth),
+                mode="lines",
+                name=line_name,
+                showlegend=first and line_name is not "",
+            )
+        )
+        first = False
+    for curve_index, bezier_curve in enumerate(bezier_curves):
+        X = np.array(bezier_curve)
+        tt = np.linspace(0, 1, 100)
+        xx = MakeBezier(tt, X)
+        if full_path is None:
+            full_path = xx
+        else:
+            full_path = np.vstack((full_path, xx))
         # plot contorl points
         if control_point_color is not None:
             fig.add_trace(
                 go.Scatter(
                     x=X[:, 0],
                     y=X[:, 1],
-                    marker_color=control_point_color,
+                    # marker_color=control_point_color,
                     marker_symbol="circle",
                     mode="markers",
                     showlegend=False,
+                    marker=dict(
+                        color='white',        # Set the fill color of the markers
+                        size=marker_size,             # Set the size of the markers
+                        line=dict(
+                            color=control_point_color,     # Set the outline color of the markers
+                            width=2          # Set the width of the marker outline
+                        )
+                    ),
                 )
             )
         if plot_start_point:
@@ -137,25 +168,19 @@ def plot_bezier(
                     go.Scatter(
                         x=[xx[0, 0]],
                         y=[xx[0, 1]],
-                        marker_color=bezier_color,
+                        # marker_color=bezier_color,
                         mode="markers",
+                        marker=dict(
+                        color='white',        # Set the fill color of the markers
+                        size=marker_size,             # Set the size of the markers
+                        line=dict(
+                            color=control_point_color,     # Set the outline color of the markers
+                            width=2          # Set the width of the marker outline
+                        )
+                    ),
                         showlegend=False,
                     )
                 )
-                
-
-    # plot bezier curves
-    fig.add_trace(
-        go.Scatter(
-            x=full_path[:, 0],
-            y=full_path[:, 1],
-            marker_color=bezier_color,
-            line=dict(width=linewidth),
-            mode="lines",
-            name=line_name,
-            showlegend=showlegend,
-        )
-    )
 
 def get_clockwise_vertices(vpoly:VPolytope):
     vertices = list(vpoly.vertices().T)
@@ -172,7 +197,7 @@ def get_ellipse(mu, sigma):
     ys=ellipse[1,:]
     return xs,ys
 
-def plot_a_2d_graph(vertices:T.List[DualVertex], width = 800):
+def plot_a_2d_graph(vertices:T.List[DualVertex], width = 800, fill_color = "grey"):
     fig = go.Figure()
 
     def add_trace(convex_set:ConvexSet):
@@ -199,7 +224,7 @@ def plot_a_2d_graph(vertices:T.List[DualVertex], width = 800):
                 x=xs,
                 y=ys,
                 line=dict(color="black"),
-                fillcolor="grey",
+                fillcolor=fill_color,
                 fill="tozeroy",
                 showlegend=False,
             )
@@ -218,7 +243,7 @@ def plot_a_2d_graph(vertices:T.List[DualVertex], width = 800):
         fig.add_trace(
             go.Scatter(
                 x=[center[0]],
-                y=[center[1]],
+                y=[center[1]+0.5],
                 mode="text",
                 text=[v.name],
                 showlegend=False,
@@ -234,4 +259,3 @@ def plot_a_2d_graph(vertices:T.List[DualVertex], width = 800):
     )
 
     return fig
-

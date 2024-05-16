@@ -23,6 +23,7 @@ from pydrake.geometry.optimization import (  # pylint: disable=import-error, no-
     Point,
     ConvexSet,
     Hyperrectangle,
+    Hyperellipsoid
 )
 import numbers
 import pydot
@@ -97,7 +98,6 @@ class GoalConditionedDualVertex(DualVertex):
         self.potential = Expression(0)
         self.J_matrix = None
 
-        # TODO: handle ellipsoids exactly
         # TODO: handle points exactly
         self.convex_set = convex_set
         if isinstance(convex_set, HPolyhedron):
@@ -106,6 +106,9 @@ class GoalConditionedDualVertex(DualVertex):
         elif isinstance(convex_set, Hyperrectangle):
             self.set_type = Hyperrectangle
             self.state_dim = convex_set.lb().shape[0]
+        elif isinstance(convex_set, Hyperellipsoid):
+            self.set_type = Hyperellipsoid
+            self.state_dim = len(convex_set.center())
         else:
             self.set_type = None
             self.state_dim = None
@@ -134,7 +137,6 @@ class GoalConditionedDualVertex(DualVertex):
 
 
     def get_hpoly(self) -> HPolyhedron:
-        # TODO: BAD
         assert self.set_type in (HPolyhedron, Hyperrectangle), "can't get hpoly for set"
         if self.set_type == HPolyhedron:
             return self.convex_set
@@ -142,7 +144,6 @@ class GoalConditionedDualVertex(DualVertex):
             return self.convex_set.MakeHPolyhedron()
         
     def get_terminal_hpoly(self) -> HPolyhedron:
-        # TODO: OK?
         assert self.terminal_set_type in (HPolyhedron, Hyperrectangle), "can't get hpoly for set"
         if self.terminal_set_type == HPolyhedron:
             return self.terminal_convex_set
@@ -176,28 +177,35 @@ class GoalConditionedDualVertex(DualVertex):
         """
         Assuming that sets are polyhedrons
         """
-        # self.linear_set_inequalities = make_linear_set_inequalities(self.x, self.convex_set, self.set_type)
-        # self.quadratic_set_inequalities = get_product_constraints(self.linear_set_inequalities)
-        # TODO: drop the polyhedral assumption
-        # in principle, expectations should be taken differently
-        hpoly = self.get_hpoly()
-        # inequalities of the form b[i] - a.T x = g_i(x) >= 0
-        A, b = hpoly.A(), hpoly.b()
-        self.B = np.hstack((b.reshape((len(b), 1)), -A))
+        if self.set_type in (Hyperrectangle, HPolyhedron):
+            hpoly = self.get_hpoly()
+            # inequalities of the form b[i] - a.T x = g_i(x) >= 0
+            A, b = hpoly.A(), hpoly.b()
+            self.B = np.hstack((b.reshape((len(b), 1)), -A))
+            self.E = None
+        elif isinstance(self.convex_set, Hyperellipsoid):
+            self.B = None
+            mu = self.convex_set.center()
+            A = self.convex_set.A()
+            c11 = 1 - mu.T.dot(A.T).dot(A).dot(mu)
+            c12 = mu.T.dot(A.T).dot(A)
+            c21 = A.T.dot(A).dot(mu).reshape((len(mu), 1))
+            c22 = -A.T.dot(A)
+            self.E = np.vstack((np.hstack((c11,c12)), np.hstack((c21,c22))))
+        else:
+            raise Exception("set type not supported")
 
         # terminal
         hpoly = self.get_terminal_hpoly()
         # inequalities of the form b[i] - a.T x = g_i(x) >= 0
         A, b = hpoly.A(), hpoly.b()
         self.B_terminal = np.hstack((b.reshape((len(b), 1)), -A))
-
-        self.E = None # TODO: fix me
         
 
     def define_potential(self, prog: MathematicalProgram):
         # provided a specific potential to use
         if self.vertex_is_target:
-            self.potential = Expression(0)
+            self.potential = Expression(0) # TODO: is this wrong; this should be a big quadratic;
         else:
             x_and_xt = np.hstack((self.x, self.xt))
             self.potential, self.J_matrix = make_potential(x_and_xt, self.options.pot_type, self.options.potential_poly_deg, prog)
