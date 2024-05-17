@@ -202,7 +202,7 @@ def postprocess_the_path(graph:PolynomialDualGCS,
     timer = timeit()
     # solve a convex restriction on the vertex sequence
     if options.postprocess_by_solving_restriction_on_mode_sequence:
-        print("postprocessing")
+        # print("postprocessing")
         full_path = solve_convex_restriction(graph, vertex_path_so_far, initial_state, options, terminal_state=terminal_state, one_last_solve = True)
         # verbose
         if options.verbose_restriction_improvement:
@@ -249,7 +249,7 @@ def lookahead_policy(
     K-step lookahead rollout policy.
     Returns a list of bezier curves. Each bezier curve is a list of control points (numpy arrays).
     """
-    INFO("running lookahead")
+    # INFO("running lookahead")
     if options is None:
         options = graph.options
     options.vertify_options_validity()
@@ -269,7 +269,8 @@ def lookahead_policy(
             terminal_state = terminal_state,
         )
         if bezier_path is None:
-            WARN("k-step optimal path couldn't find a solution")
+            WARN("k-step optimal path couldn't find a solution", initial_state)
+            ERROR(vertex_now.name, state_now, vertex_now.convex_set.PointInSet(state_now))
             return None, None
         # take just the first action from that path, then repeat
         first_segment = bezier_path[0]
@@ -278,6 +279,7 @@ def lookahead_policy(
             vertex_path[1],
             first_segment[-1],
         )
+        state_now = vertex_now.convex_set.Projection(state_now)[1].flatten()
         vertex_path_so_far.append(vertex_now)
 
     full_path = postprocess_the_path(graph, vertex_path_so_far, full_path, initial_state, options, terminal_state)
