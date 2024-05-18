@@ -237,6 +237,33 @@ class Node:
                     self.bezier_path_so_far + [next_bezier_curve], 
                     self.vertex_path_so_far + [next_vertex]
                     )
+    
+def get_lookahead_cost(
+    graph: PolynomialDualGCS,
+    lookahead:int,
+    vertex: DualVertex,
+    initial_state: npt.NDArray,
+    options: ProgramOptions = None,
+    terminal_state: npt.NDArray = None,
+) -> float:
+    """
+    K-step lookahead rollout policy.
+    Returns a list of bezier curves. Each bezier curve is a list of control points (numpy arrays).
+    """
+    if options is None:
+        options = graph.options
+    options.policy_lookahead = lookahead
+    graph.options.policy_lookahead = lookahead
+    options.vertify_options_validity()
+    # use a k-step lookahead to obtain optimal k-step lookahead path
+    return get_k_step_optimal_path(
+        graph,
+        vertex,
+        initial_state,
+        options,
+        already_visited=[vertex],
+        terminal_state = terminal_state,
+    )[0]
 
 def lookahead_policy(
     graph: PolynomialDualGCS,
