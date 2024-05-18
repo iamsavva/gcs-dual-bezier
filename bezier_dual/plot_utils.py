@@ -99,7 +99,8 @@ def plot_bezier(
     control_point_color="red",
     name=None,
     linewidth=3,
-    plot_start_point = True
+    plot_start_point = True,
+    override_showlegend = True
 ):
     showlegend = False
     line_name = ""
@@ -150,12 +151,12 @@ def plot_bezier(
             line=dict(width=linewidth),
             mode="lines",
             name=line_name,
-            showlegend=showlegend,
+            showlegend=showlegend and override_showlegend,
         )
     )
 
 
-def plot_a_2d_graph(vertices:T.List[DualVertex], width = 800):
+def plot_a_2d_graph(vertices:T.List[DualVertex], width = 800, with_text = True, fill_color = "mintcream"):
     # TODO: assumes that vertices are
     fig = go.Figure()
 
@@ -167,7 +168,7 @@ def plot_a_2d_graph(vertices:T.List[DualVertex], width = 800):
                 x=xs,
                 y=ys,
                 line=dict(color="black"),
-                fillcolor="grey",
+                fillcolor=fill_color,
                 fill="tozeroy",
                 showlegend=False,
             )
@@ -176,15 +177,16 @@ def plot_a_2d_graph(vertices:T.List[DualVertex], width = 800):
     for v in vertices:
         add_trace(v.convex_set.lb(), v.convex_set.ub())
         center = (v.convex_set.lb() + v.convex_set.ub()) / 2
-        fig.add_trace(
-            go.Scatter(
-                x=[center[0]],
-                y=[center[1]],
-                mode="text",
-                text=[v.name],
-                showlegend=False,
+        if with_text:
+            fig.add_trace(
+                go.Scatter(
+                    x=[center[0]],
+                    y=[center[1]],
+                    mode="text",
+                    text=[v.name],
+                    showlegend=False,
+                )
             )
-        )
 
     fig.update_layout(height=width, width=width, title_text="Graph view")
     fig.update_layout(

@@ -197,7 +197,7 @@ def get_ellipse(mu, sigma):
     ys=ellipse[1,:]
     return xs,ys
 
-def plot_a_2d_graph(vertices:T.List[DualVertex], width = 800, fill_color = "grey"):
+def plot_a_2d_graph(vertices:T.List[DualVertex], width = 800, fill_color = "mintcream"):
     fig = go.Figure()
 
     def add_trace(convex_set:ConvexSet):
