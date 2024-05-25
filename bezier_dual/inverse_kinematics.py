@@ -4,7 +4,7 @@ import numpy as np
 from pydrake.math import RigidTransform, RotationMatrix # pylint: disable=import-error, no-name-in-module
 from pydrake.multibody.inverse_kinematics import InverseKinematics # pylint: disable=import-error, no-name-in-module
 
-from arm_visualization import create_arm, scenario_loader
+from arm_visualization import create_arm, arm_components_loader
 
 from pydrake.solvers import ( # pylint: disable=import-error, no-name-in-module
     Solve,
@@ -13,6 +13,8 @@ from pydrake.solvers import ( # pylint: disable=import-error, no-name-in-module
 def compute_inverse_kinematics(q0: Sequence, 
                                endeffector_pose: RigidTransform, 
                                use_rohan_scenario:bool = False, 
+                               use_cheap:bool = True
+
 ) -> Optional[Sequence]:
     """Return the joint angles for the given end-effector pose.
 
@@ -26,7 +28,7 @@ def compute_inverse_kinematics(q0: Sequence,
         exist.
     """
 
-    arm_components = scenario_loader(use_rohan_scenario=use_rohan_scenario, use_meshcat=False)
+    arm_components = arm_components_loader(use_rohan_scenario=use_rohan_scenario, use_cheap=use_cheap, use_meshcat=False,)
     plant = arm_components.plant
     
     plant_context = plant.CreateDefaultContext()

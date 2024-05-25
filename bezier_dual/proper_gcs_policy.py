@@ -200,25 +200,25 @@ def postprocess_the_path(graph:PolynomialDualGCS,
                           terminal_state:npt.NDArray = None):
     if options is None:
         options = graph.options
-    if options.verbose_restriction_improvement:
-        cost_before = get_path_cost(graph, vertex_path_so_far, full_path, False, True, terminal_state=terminal_state)
-    timer = timeit()
+    # if options.verbose_restriction_improvement:
+    #     cost_before = get_path_cost(graph, vertex_path_so_far, full_path, False, True, terminal_state=terminal_state)
+    # timer = timeit()
     # solve a convex restriction on the vertex sequence
     if options.postprocess_by_solving_restriction_on_mode_sequence:
         full_path = solve_convex_restriction(graph, vertex_path_so_far, initial_state, initial_previous_state, options, terminal_state=terminal_state, one_last_solve = True)
         # verbose
-        if options.verbose_restriction_improvement:
-            cost_after = get_path_cost(graph, vertex_path_so_far, full_path, False, True, terminal_state=terminal_state)
-            INFO(
-                "path cost improved from",
-                np.round(cost_before, 1),
-                "to",
-                np.round(cost_after, 1),
-                "; original is",
-                np.round((cost_before / cost_after - 1) * 100, 1),
-                "% worse",
-            )
-    timer.dt("one last solve", print_stuff = options.verbose_solve_times)
+        # if options.verbose_restriction_improvement:
+        #     cost_after = get_path_cost(graph, vertex_path_so_far, full_path, False, True, terminal_state=terminal_state)
+        #     INFO(
+        #         "path cost improved from",
+        #         np.round(cost_before, 1),
+        #         "to",
+        #         np.round(cost_after, 1),
+        #         "; original is",
+        #         np.round((cost_before / cost_after - 1) * 100, 1),
+        #         "% worse",
+        #     )
+    # timer.dt("one last solve", print_stuff = options.verbose_solve_times)
     return full_path
 
 class Node:
@@ -349,6 +349,7 @@ def lookahead_with_backtracking_policy(
                     add_edge_and_vertex_violations = options.policy_add_violation_penalties and not options.policy_use_zero_heuristic
                     add_terminal_heuristic = not options.policy_use_zero_heuristic
                     next_node = node.extend(bezier_curves[0], vertex_path[1])
+                    # DROP THIS
                     cost_of_path = get_path_cost(graph, next_node.vertex_path_so_far, next_node.bezier_path_so_far, add_edge_and_vertex_violations, add_terminal_heuristic, terminal_state=terminal_state)
                     try:
                         decision_options[decision_index + 1].put( (cost_of_path, next_node ))

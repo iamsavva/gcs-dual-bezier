@@ -146,15 +146,13 @@ def solve_parallelized_convex_restriction(
     where bezier curve is a list of numpy arrays (vectors).
     """
 
-    
-
     if options is None:
         options = graph.options
 
     # construct an optimization problem
     prog = MathematicalProgram()
     all_bezier_curves = []
-    timer = timeit()
+    # timer = timeit()
 
     def add_ge_lin_con(B:npt.NDArray, x:npt.NDArray):
         prog.AddLinearConstraint(-B[:, 1:], 
@@ -230,13 +228,14 @@ def solve_parallelized_convex_restriction(
                     
 
             else:
-                bezier_curve = [last_x]
+                bezier_curve = [last_x] * options.num_control_points
                 edge = graph.edges[get_edge_name(vertex.name, vertex_path[i + 1].name)]
 
                 for j in range(1, options.num_control_points):
                     # add a new knot point
                     x_j = prog.NewContinuousVariables(vertex.state_dim)
-                    bezier_curve.append(x_j)
+                    # bezier_curve.append(x_j)
+                    bezier_curve[j] = x_j
                     # knot point inside a set
                     if j == options.num_control_points - 1:
                         # inside the intersection
@@ -278,27 +277,28 @@ def solve_parallelized_convex_restriction(
                 bezier_curves.append(bezier_curve)
 
             # on all but the initial vertex:
-            if i > 0:
-                # add flow violation penalty.
-                # only do so so far as we are using heuristic values
-                if options.policy_add_violation_penalties and not options.policy_use_zero_heuristic:
-                    edge = graph.edges[get_edge_name(vertex_path[i-1].name, vertex.name)]
-                    vcost = graph.value_function_solution.GetSolution(edge.bidirectional_edge_violation)
-                    vcost += graph.value_function_solution.GetSolution(vertex.total_flow_in_violation)
-                    prog.AddLinearCost(vcost)
+            # if i > 0:
+            #     # add flow violation penalty.
+            #     # only do so so far as we are using heuristic values
+            #     if options.policy_add_violation_penalties and not options.policy_use_zero_heuristic:
+            #         edge = graph.edges[get_edge_name(vertex_path[i-1].name, vertex.name)]
+            #         vcost = graph.value_function_solution.GetSolution(edge.bidirectional_edge_violation)
+            #         vcost += graph.value_function_solution.GetSolution(vertex.total_flow_in_violation)
+            #         prog.AddLinearCost(vcost)
 
             #     NOTE: add the G term. 
             #     NOTE: this will make the problem non-convex
             #     TODO: is this is a hack or genuinly useful.
-                if options.policy_add_G_term:
-                    G_expression = graph.value_function_solution.GetSolution(vertex.G_expression)
-                    G_expression = G_expression.Substitute({vertex.x[i]: last_delta[i] for i in range(vertex.state_dim)})
-                    if terminal_state is not None:
-                        G_expression = G_expression.Substitute({vertex.xt[i]: terminal_state[i] for i in range(vertex.state_dim)})
-                    prog.AddCost(G_expression)
+                # if options.policy_add_G_term:
+                #     G_expression = graph.value_function_solution.GetSolution(vertex.G_expression)
+                #     G_expression = G_expression.Substitute({vertex.x[i]: last_delta[i] for i in range(vertex.state_dim)})
+                #     if terminal_state is not None:
+                #         G_expression = G_expression.Substitute({vertex.xt[i]: terminal_state[i] for i in range(vertex.state_dim)})
+                #     prog.AddCost(G_expression)
+
         all_bezier_curves.append(bezier_curves)
 
-    timer.dt("just building", print_stuff=options.verbose_solve_times)
+    # timer.dt("just building", print_stuff=options.verbose_solve_times)
     
     # TODO: kinda nasty. how about instead i pass a solver constructor
     if options.policy_solver is None:
@@ -333,15 +333,15 @@ def solve_parallelized_convex_restriction(
         else:
             solution = options.policy_solver().Solve(prog)
 
-    timer.dt("just solving", print_stuff=options.verbose_solve_times)
+    # timer.dt("just solving", print_stuff=options.verbose_solve_times)
 
-    final_result = []
+    final_result = [([], [])] * len(vertex_paths)
     if solution.is_success():
         for i, v_path in enumerate(vertex_paths):
             bezier_curves = all_bezier_curves[i]
             bezier_solutions = [[solution.GetSolution(control_point) for control_point in bezier_curve] for bezier_curve in bezier_curves]
             full_tuple = (v_path, bezier_solutions)
-            final_result.append(full_tuple)
+            final_result[i] = full_tuple
         return final_result
     else:
         WARN("failed to solve",verbose = verbose_solve_success)

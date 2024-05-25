@@ -121,9 +121,10 @@ class GoalConditionedDualVertex(DualVertex):
             raise Exception("bad terminal state set")
         
         self.xt = xt
-        self.define_variables(prog)
-        self.define_set_inequalities()
-        self.define_potential(prog)
+        if not self.options.just_build_graph:
+            self.define_variables(prog)
+            self.define_set_inequalities()
+            self.define_potential(prog)
 
         self.edges_in = []  # type: T.List[str]
         self.edges_out = []  # type: T.List[str]
@@ -287,7 +288,8 @@ class GoalConditionedDualEdge(DualEdge):
         self.B_intersection = self.intersect_left_right_sets()
         self.bidirectional_edge_violation = bidirectional_edge_violation
 
-        self.define_edge_polynomials_and_sos_constraints(prog)
+        if not self.options.just_build_graph:
+            self.define_edge_polynomials_and_sos_constraints(prog)
 
     def intersect_left_right_sets(self) -> npt.NDArray:
         left_hpoly = self.left.get_hpoly()
@@ -453,6 +455,8 @@ class GoalConditionedPolynomialDualGCS(PolynomialDualGCS):
         return v
     
     def MaxCostOverVertex(self, vertex:GoalConditionedDualVertex):
+        if self.options.just_build_graph:
+            return None
         hpoly = vertex.get_hpoly()
         ellipsoid = hpoly.MaximumVolumeInscribedEllipsoid()
         mu = ellipsoid.center()

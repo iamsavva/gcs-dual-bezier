@@ -97,6 +97,9 @@ class ProgramOptions:
         self.use_G_term_in_value_synthesis = False
 
 
+        self.just_build_graph = False
+
+
         
 
     def vertify_options_validity(self):

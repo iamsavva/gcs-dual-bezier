@@ -536,6 +536,8 @@ class PolynomialDualGCS:
         Synthesize a policy over the graph.
         Policy is stored in the solution: you'd need to extract it per vertex.
         """
+        if self.options.just_build_graph:
+            return None
         timer = timeit()
         mosek_solver = MosekSolver()
         solver_options = SolverOptions()

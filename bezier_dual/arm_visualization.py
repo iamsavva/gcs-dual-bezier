@@ -36,14 +36,11 @@ import numpy.typing as npt
 
 from dataclasses import dataclass
 
-def get_parser(plant: MultibodyPlant) -> Parser:
-    """Creates a parser for a plant and adds package paths to it."""
-    parser = Parser(plant)
-    return parser
 import os
 
 from pydrake.trajectories import Trajectory, BezierCurve, CompositeTrajectory, PathParameterizedTrajectory # pylint: disable=import-error, no-name-in-module, unused-import
 from pydrake.multibody.optimization import Toppra # pylint: disable=import-error, no-name-in-module, unused-import
+from pydrake.all import RandomGenerator, ConvexSet # pylint: disable=import-error, no-name-in-module, unused-import
 
 from manipulation.utils import ConfigureParser
 
@@ -58,10 +55,11 @@ class ArmComponents:
     trajectory_source: TrajectorySource
     meshcat: Meshcat
     meshcat_visualizer: MeshcatVisualizer
+    diagram_context: Context
     
 
 def create_arm(
-    arm_file_path: str = "./iiwa.dmd.yaml",
+    arm_file_path: str,
     num_joints: int = 7,
     time_step: float = 0.0,
     use_meshcat: bool = True,
@@ -79,13 +77,9 @@ def create_arm(
 
     builder = DiagramBuilder()
     plant, scene_graph = AddMultibodyPlantSceneGraph(builder, time_step)
-    parser = get_parser(plant)
+    parser = Parser(plant)
     ConfigureParser(parser)
     parser.package_map().AddPackageXml(filename=os.path.abspath("./models/package.xml"))
-
-    # parser.AddModelsFromUrl(
-    #     "package://manipulation/schunk_wsg_50_welded_fingers.sdf"
-    # )
 
     # Add arm
     parser.AddModels(arm_file_path)
@@ -139,12 +133,11 @@ def create_arm(
         meshcat = None
         meshcat_visualizer = None
 
-    # state_logger = LogVectorOutput(plant.get_state_output_port(), builder)
-    # commanded_torque_logger = LogVectorOutput(
-    #     arm_controller.get_output_port_control(), builder
-    # )
-
     diagram = builder.Build()
+
+    diagram_context = diagram.CreateDefaultContext()
+    # plant_context = plant.GetMyContextFromRoot(diagram_context)
+    diagram.ForcedPublish(diagram_context)
 
     return ArmComponents(
         num_joints=num_joints,
@@ -153,19 +146,8 @@ def create_arm(
         trajectory_source=trajectory_source,
         meshcat=meshcat,
         meshcat_visualizer=meshcat_visualizer,
+        diagram_context=diagram_context
     )
-
-def scenario_loader(arm_components: ArmComponents = None, 
-                    use_rohan_scenario:bool = False,
-                    use_meshcat:bool = True
-                    ):
-    if arm_components is None:
-        if use_rohan_scenario:
-            arm_components = create_arm(arm_file_path="./models/iiwa14_rohan.dmd.yaml", use_meshcat=use_meshcat)
-        else:
-            arm_components = create_arm(arm_file_path="./models/iiwa14_david.dmd.yaml", use_meshcat=use_meshcat)
-    return arm_components
-
 
 def reparameterize_with_toppra(
     trajectory: Trajectory,
@@ -206,79 +188,116 @@ def make_path_paramed_traj_from_list_of_bezier_curves(list_of_list_of_lists: T.L
     composite_traj = CompositeTrajectory(list_of_bez_curves)
     return reparameterize_with_toppra(composite_traj, plant, num_grid_points)
 
+def arm_components_loader(use_rohan_scenario:bool = False,
+                          use_cheap: bool = True,
+                          use_meshcat:bool = True
+                            ):
+    """
+    a very dumb loader for the arm components.
+
+    use_rohan_scenario = True -- load left-right bin scenario
+    use_rohan_scenario = False -- load shelves and left right bins scenario
+    use_cheap = True -- load iiwa7 with box collision geometry
+    use_cheap = False -- load iiwa14 with cylinder collision geometry
+    """
+    if use_rohan_scenario:
+        if use_cheap:
+            arm_components = create_arm(arm_file_path="./models/iiwa14_rohan_cheap.dmd.yaml", use_meshcat=use_meshcat)
+        else:
+            arm_components = create_arm(arm_file_path="./models/iiwa14_rohan.dmd.yaml", use_meshcat=use_meshcat)
+    else:
+        if use_cheap:
+            arm_components = create_arm(arm_file_path="./models/iiwa14_david_cheap.dmd.yaml", use_meshcat=use_meshcat)
+        else:
+            arm_components = create_arm(arm_file_path="./models/iiwa14_david.dmd.yaml", use_meshcat=use_meshcat)
+    return arm_components
 
 
-def visualize_a_trajectory(solution: T.List[T.List[npt.NDArray]], 
-                           arm_components: ArmComponents = None, 
-                           num_timesteps = 1000, 
-                           use_rohan_scenario:bool = True, 
-                           debug_t_start:float=None, debug_t_end:float=None, recording_name: str = None):
-    if debug_t_start is None:
-        debug_t_start = 100
-    if debug_t_end is None:
-        debug_t_end = -1
-    # Create arm
-    arm_components = scenario_loader(arm_components, use_rohan_scenario)
+
+def visualize_arm_at_state(state:npt.NDArray, use_rohan_scenario:bool = True, use_cheap:bool =True):
+    """
+    draw the arm at a provided state
+    """
+    print("YO")
+    assert len(state) == 7
+    arm_components = arm_components_loader(use_rohan_scenario, use_cheap, True)
 
     simulator = Simulator(arm_components.diagram)
     simulator.set_target_realtime_rate(1.0)
 
     context = simulator.get_mutable_context()
     plant_context = arm_components.plant.GetMyContextFromRoot(context)
-
-    # Sample the trajectory
-    traj = make_path_paramed_traj_from_list_of_bezier_curves(solution, arm_components.plant, num_timesteps)
-
-    q_numeric = np.empty((num_timesteps, arm_components.num_joints))
-    q_dot_numeric = np.empty((num_timesteps, arm_components.num_joints))
-    # q_ddot_numeric = np.empty((num_timesteps, arm_components.num_joints))
-    sample_times_s = np.linspace(
-        traj.start_time(), traj.end_time(), num=num_timesteps, endpoint=True
-    )
-    for i, t in enumerate(sample_times_s):
-        q_numeric[i] = traj.value(t).flatten()
-        q_dot_numeric[i] = traj.EvalDerivative(t, derivative_order=1).flatten()
-
+    plant = arm_components.plant
 
     arm_components.meshcat_visualizer.StartRecording()
-    for q, q_dot, t in zip(
-        q_numeric,
-        q_dot_numeric,
-        sample_times_s
-    ):
-        if debug_t_start <= t and t <= debug_t_end:
-            print(q)
-        arm_components.plant.SetPositions(plant_context, q)
-        arm_components.plant.SetVelocities(plant_context, q_dot) 
-        simulator.AdvanceTo(t)
+    plant.SetPositions(plant_context, state)
+    simulator.AdvanceTo(0)
+    plant.SetPositions(plant_context, state)
+
+    arm_components.meshcat_visualizer.StopRecording()
+    arm_components.meshcat_visualizer.PublishRecording()
+
+
+def visualize_arm_at_init(use_rohan_scenario:bool = True, use_cheap:bool = True):
+    """
+    draw the arm at the 0000000 state 
+    """
+    visualize_arm_at_state(np.zeros(7), use_rohan_scenario, use_cheap)
+
+
+def visualize_arm_at_samples_from_set(convex_set: ConvexSet, num_samples:int = 30, dt:float = 0.1, use_rohan_scenario:bool=True, use_cheap:bool = True, recording_name = None):
+    """
+    draw a bunch of samples from the set
+
+    Args:
+        convex_set (ConvexSet): convex set from which to draw samples
+        num_samples (int, optional): number of samples to draw
+        dt (float, optional): amount of time to wait between visualizing individual samples
+        use_rohan_scenario (bool, optional): use Rohan's or David's scenario
+        use_cheap: use simple box or cylinder geometry
+    """
+    # collect a bunch of samples 
+    np.random.seed(0)
+    sample = None
+    generator = RandomGenerator(1)
+    samples = []
+    for _ in range(0,num_samples):    
+        if sample is not None:
+            sample = convex_set.UniformSample(generator, sample)
+        else:
+            sample = convex_set.UniformSample(generator)
+        samples.append(sample)
+
+    # star the sim
+    arm_components = arm_components_loader(use_rohan_scenario, use_cheap, True)
+    simulator = Simulator(arm_components.diagram)
+    simulator.set_target_realtime_rate(1.0)
+    context = simulator.get_mutable_context()
+    plant_context = arm_components.plant.GetMyContextFromRoot(context)
+
+    arm_components.meshcat_visualizer.StartRecording()
+    # draw a new sample every dt
+    t = 0
+    N = 20
+    for sample in samples:
+        # draw the sample 20 times in the span of dt -- so that the arm doesn't move at all
+        for _ in range(N):
+            t += dt/N
+            arm_components.plant.SetPositions(plant_context, sample)
+            arm_components.plant.SetVelocities(plant_context, np.zeros(7))
+            simulator.AdvanceTo(t)
 
     arm_components.meshcat_visualizer.StopRecording()
     arm_components.meshcat_visualizer.PublishRecording()
 
     if recording_name is not None:
-        link = arm_components.meshcat.StaticHtml()
-        with open(recording_name + ".html", "w+") as f:
-            f.write(link)
+        save_the_visualization(arm_components, recording_name)
 
+def save_the_visualization(arm_components: ArmComponents, recording_name:str):
+    """
+    save the visualization into an html file -- for future use
+    """
+    link = arm_components.meshcat.StaticHtml()
+    with open(recording_name + ".html", "w+") as f:
+        f.write(link)
 
-def visualize_arm_at_state(state:npt.NDArray, arm_components: ArmComponents = None, use_rohan_scenario = False):
-    # Create arm
-    arm_components = scenario_loader(arm_components, use_rohan_scenario)
-
-    simulator = Simulator(arm_components.diagram)
-    simulator.set_target_realtime_rate(1.0)
-
-    context = simulator.get_mutable_context()
-    plant_context = arm_components.plant.GetMyContextFromRoot(context)
-
-    arm_components.meshcat_visualizer.StartRecording()
-    arm_components.plant.SetPositions(plant_context, state)
-    simulator.AdvanceTo(0)
-    arm_components.plant.SetPositions(plant_context, state)
-
-    arm_components.meshcat_visualizer.StopRecording()
-    arm_components.meshcat_visualizer.PublishRecording()
-
-
-def visualize_arm_at_init(arm_components: ArmComponents = None, use_rohan_scenario = False):
-    visualize_arm_at_state(np.zeros(7), arm_components, use_rohan_scenario)

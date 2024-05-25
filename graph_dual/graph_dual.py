@@ -40,11 +40,6 @@ from pydrake.math import ( # pylint: disable=import-error, no-name-in-module, un
     le,
 )  
 
-import plotly.graph_objects as go  # pylint: disable=import-error
-from plotly.express.colors import sample_colorscale  # pylint: disable=import-error
-import plotly.graph_objs as go
-from plotly.subplots import make_subplots
-
 from program_options import FREE_POLY, PSD_POLY, CONVEX_POLY, ProgramOptions
 
 from util import (
