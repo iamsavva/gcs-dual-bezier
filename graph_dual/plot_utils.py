@@ -157,7 +157,7 @@ def plot_bezier(
                         size=marker_size,             # Set the size of the markers
                         line=dict(
                             color=control_point_color,     # Set the outline color of the markers
-                            width=2          # Set the width of the marker outline
+                            width=3          # Set the width of the marker outline
                         )
                     ),
                 )
@@ -175,7 +175,7 @@ def plot_bezier(
                         size=marker_size,             # Set the size of the markers
                         line=dict(
                             color=control_point_color,     # Set the outline color of the markers
-                            width=2          # Set the width of the marker outline
+                            width=3          # Set the width of the marker outline
                         )
                     ),
                         showlegend=False,

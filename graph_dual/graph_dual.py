@@ -140,6 +140,9 @@ class DualVertex:
         self.x = prog.NewIndeterminates(self.state_dim, "x_" + self.name)
         self.vars = Variables(self.x)
         self.total_flow_in_violation = prog.NewContinuousVariables(1)[0]
+        # prog.AddLinearConstraint(self.total_flow_in_violation == 0)
+        # if self.name == "p0":
+        #     prog.AddLinearConstraint(self.total_flow_in_violation == 3)
     
         if not self.vertex_is_target:
             prog.AddLinearConstraint(self.total_flow_in_violation >= 0)
@@ -409,9 +412,12 @@ class PolynomialDualGCS:
         bidirectional_edge_violation = self.prog.NewContinuousVariables(1)[0]
         
         self.prog.AddLinearConstraint(
-            bidirectional_edge_violation >= 0
+            bidirectional_edge_violation == 0
         )  
-        self.prog.AddLinearCost(bidirectional_edge_violation * self.options.max_flow_through_edge)
+        # self.prog.AddLinearConstraint(
+        #     bidirectional_edge_violation >= 0
+        # )  
+        # self.prog.AddLinearCost(bidirectional_edge_violation * self.options.max_flow_through_edge)
         
         self.AddEdge(v_left, v_right, cost_function, options, bidirectional_edge_violation)
         self.AddEdge(v_right, v_left, cost_function, options, bidirectional_edge_violation)
