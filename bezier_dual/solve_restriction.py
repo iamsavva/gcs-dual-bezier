@@ -428,6 +428,19 @@ def get_optimal_path(
     gcs_options.max_rounded_paths = options.gcs_policy_max_rounded_paths
     if options.gcs_policy_solver is not None:
         gcs_options.solver = options.gcs_policy_solver()
+        gcs_options.solver_options = SolverOptions()
+        # gcs_options.solver_options.SetOption(MosekSolver.id(),
+        #                                      'MSK_DPAR_INTPNT_TOL_PFEAS',
+        #                                      1e-3)
+        # gcs_options.solver_options.SetOption(MosekSolver.id(),
+        #                                      'MSK_DPAR_INTPNT_TOL_DFEAS',
+        #                                      1e-3)
+        # gcs_options.solver_options.SetOption(MosekSolver.id(),
+        #                                      'MSK_DPAR_INTPNT_TOL_REL_GAP',
+        #                                      1e-3)
+        # gcs_options.solver_options.SetOption(MosekSolver.id(),
+        #                                      'MSK_DPAR_INTPNT_TOL_INFEAS',
+        #                                      1e-3)
 
     # solve
     timer = timeit()
