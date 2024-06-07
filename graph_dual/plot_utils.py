@@ -102,7 +102,8 @@ def plot_bezier(
     name=None,
     linewidth=3,
     marker_size = 3,
-    plot_start_point = True
+    plot_start_point = True,
+    dotted=True
 ):
     showlegend = False
     line_name = ""
@@ -122,17 +123,30 @@ def plot_bezier(
             full_path = np.vstack((full_path, xx))
 
         # plot bezier curves
-        fig.add_trace(
-            go.Scatter(
-                x=full_path[:, 0],
-                y=full_path[:, 1],
-                marker_color=bezier_color,
-                line=dict(width=linewidth),
-                mode="lines",
-                name=line_name,
-                showlegend=first and line_name is not "",
+        if dotted:
+            fig.add_trace(
+                go.Scatter(
+                    x=full_path[:, 0],
+                    y=full_path[:, 1],
+                    marker_color=bezier_color,
+                    line=dict(width=linewidth, dash='dot'),
+                    mode="lines",
+                    name=line_name,
+                    showlegend=first and line_name is not "",
+                )
             )
-        )
+        else: 
+            fig.add_trace(
+                go.Scatter(
+                    x=full_path[:, 0],
+                    y=full_path[:, 1],
+                    marker_color=bezier_color,
+                    line=dict(width=linewidth),
+                    mode="lines",
+                    name=line_name,
+                    showlegend=first and line_name is not "",
+                )
+            )
         first = False
     for curve_index, bezier_curve in enumerate(bezier_curves):
         X = np.array(bezier_curve)

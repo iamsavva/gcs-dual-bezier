@@ -662,17 +662,18 @@ def plot_optimal_and_rollout(
             INFO("----")
 
         if plot_control_points:
-            plot_bezier(fig, optimal_path, optimal_color, optimal_color, name=optimal_name,linewidth=linewidth, marker_size=marker_size, plot_start_point=plot_start_point)
+            plot_bezier(fig, optimal_path, optimal_color, optimal_color, name=optimal_name,linewidth=linewidth, marker_size=marker_size, plot_start_point=plot_start_point, dotted=False)
         else:
-            plot_bezier(fig, optimal_path, optimal_color, None, name=optimal_name,linewidth=linewidth, marker_size=marker_size, plot_start_point=plot_start_point)
+            plot_bezier(fig, optimal_path, optimal_color, None, name=optimal_name,linewidth=linewidth, marker_size=marker_size, plot_start_point=plot_start_point, dotted=False)
     else:
         if verbose_comparison_to_optimal:
             rollout_cost = get_path_cost(graph, rollout_v_path, rollout_path, False, True, terminal_state)
             INFO("policy.  time", np.round(dt,3), "cost", np.round(rollout_cost, 3))
+
     if plot_control_points:
-        plot_bezier(fig, rollout_path, rollout_color, rollout_color, name=rollout_name, linewidth=linewidth, marker_size=marker_size, plot_start_point=plot_start_point)
+        plot_bezier(fig, rollout_path, rollout_color, rollout_color, name=rollout_name, linewidth=linewidth, marker_size=marker_size, plot_start_point=plot_start_point, dotted=True)
     else:
-        plot_bezier(fig, rollout_path, rollout_color, None, name=rollout_name,linewidth=linewidth, marker_size=marker_size, plot_start_point=plot_start_point)
+        plot_bezier(fig, rollout_path, rollout_color, None, name=rollout_name,linewidth=linewidth, marker_size=marker_size, plot_start_point=plot_start_point, dotted=True)
     return True, dt
 
 
