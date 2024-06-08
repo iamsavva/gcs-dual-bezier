@@ -686,8 +686,10 @@ def plot_optimal(
     plot_control_points:bool=True,
     plot_start_point:bool = True,
     linewidth:int=3,
+    marker_size:int=3,
     verbose_comparison_to_optimal:bool = False,
     terminal_state: npt.NDArray = None,
+    optimal_name = "optimal",
 ) -> T.Tuple[bool, float]:
     """
     rollout the policy from the initial condition, plot it out on a given figure`
@@ -695,7 +697,7 @@ def plot_optimal(
     """
     # TODO: drop this, this is repeated
     options = graph.options
-    options.vertify_options_validity()
+    # options.vertify_options_validity()
 
     optimal_dt, _, optimal_path, optimal_v_path = get_optimal_path(graph, vertex, state, options, terminal_state)
     if verbose_comparison_to_optimal:
@@ -704,7 +706,7 @@ def plot_optimal(
         INFO("----")
 
     if plot_control_points:
-        plot_bezier(fig, optimal_path, optimal_color, optimal_color, name="optimal",linewidth=linewidth, plot_start_point=plot_start_point)
+        plot_bezier(fig, optimal_path, optimal_color, optimal_color, name=optimal_name,linewidth=linewidth, marker_size=marker_size, plot_start_point=plot_start_point, dotted=False)
     else:
-        plot_bezier(fig, optimal_path, optimal_color, None, name="optimal",linewidth=linewidth, plot_start_point=plot_start_point)
+        plot_bezier(fig, optimal_path, optimal_color, None, name=optimal_name,linewidth=linewidth, marker_size=marker_size, plot_start_point=plot_start_point, dotted=False)
     return True, optimal_dt
