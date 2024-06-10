@@ -379,7 +379,7 @@ def solve_convex_restriction(
 ) -> T.Tuple[T.List[T.List[npt.NDArray]], float]:
     result, solver_solve_time = solve_parallelized_convex_restriction(graph, [vertex_path], state_now, state_last, options, verbose_failure, terminal_state, one_last_solve, verbose_solve_success = False)
     if result is None:
-        return None
+        return None, solver_solve_time
     else:
         return result[0][1], solver_solve_time
     

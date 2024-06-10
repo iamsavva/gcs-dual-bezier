@@ -181,7 +181,7 @@ def get_k_step_optimal_path(
     
     best_cost, best_path, best_vertex_path = np.inf, None, None
     if solutions is None:
-        return best_cost, best_path, best_vertex_path
+        return best_cost, best_path, best_vertex_path, solver_time
     for (vertex_path, bezier_curves) in solutions:
         cost = get_path_cost(graph, vertex_path, bezier_curves, False, True, terminal_state=terminal_state)
         if cost < best_cost:
@@ -274,7 +274,7 @@ def lookahead_policy(
         total_solver_time += solver_time
         if bezier_path is None:
             WARN("k-step optimal path couldn't find a solution")
-            return None, None
+            return None, None, total_solver_time
         # take just the first action from that path, then repeat
         first_segment = bezier_path[0]
         full_path.append(first_segment)
@@ -324,7 +324,8 @@ def lookahead_with_backtracking_policy(
 
     while not found_target:
         if decision_index == -1:
-            return None, None
+            WARN("backtracked all the way to 0!")
+            return None, None, total_solver_time
         if decision_options[decision_index].empty():
             decision_index -= 1
         else:
@@ -346,7 +347,7 @@ def lookahead_with_backtracking_policy(
             if number_of_iterations >= options.backtracking_iteration_limit:
                 WARN("backtracking ran out of iterations")
                 decision_index = -1
-                return None, None
+                return None, None, total_solver_time
             
             for vertex_path in vertex_paths:
                 bezier_curves, solver_time = solve_convex_restriction(graph, vertex_path, node.state_now, node.state_last, options, terminal_state=terminal_state, one_last_solve=False)
@@ -386,6 +387,7 @@ def lookahead_with_backtracking_policy(
     if found_target:
         full_path, solver_time = postprocess_the_path(graph, target_node.vertex_path_so_far, target_node.bezier_path_so_far, initial_state, initial_previous_state, options, terminal_state)
         total_solver_time += solver_time
+        WARN("found target")
         return full_path, target_node.vertex_path_so_far, total_solver_time
         
     else:
