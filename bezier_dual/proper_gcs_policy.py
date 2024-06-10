@@ -175,20 +175,31 @@ def get_k_step_optimal_path(
 
     # for every path -- solve convex restriction, add next states
     timer = timeit()
-    solutions, solver_time = solve_parallelized_convex_restriction(graph, vertex_paths, state, last_state, options, terminal_state=terminal_state, one_last_solve=False)
+    solutions, total_solver_time = solve_parallelized_convex_restriction(graph, vertex_paths, state, last_state, options, terminal_state=terminal_state, one_last_solve=False)
     timer.dt("solving", print_stuff = options.verbose_solve_times)
 
     
     best_cost, best_path, best_vertex_path = np.inf, None, None
     if solutions is None:
-        return best_cost, best_path, best_vertex_path, solver_time
-    for (vertex_path, bezier_curves) in solutions:
-        cost = get_path_cost(graph, vertex_path, bezier_curves, False, True, terminal_state=terminal_state)
-        if cost < best_cost:
-            best_cost, best_path, best_vertex_path = cost, bezier_curves, vertex_path
-    timer.dt("finding best", print_stuff = options.verbose_solve_times)
+        if not options.total_solver_time_add:
+            total_solver_time = 0.0
+        # return best_cost, best_path, best_vertex_path, solver_time
+        for vertex_path in vertex_paths:
+            bezier_curves, solver_time = solve_convex_restriction(graph, vertex_path, state, last_state, options, terminal_state=terminal_state, one_last_solve=False)
+            total_solver_time += solver_time
+            if bezier_curves is not None:
+                # DROP THIS
+                cost = get_path_cost(graph, vertex_path, bezier_curves, False, True, terminal_state=terminal_state)
+                if cost < best_cost:
+                    best_cost, best_path, best_vertex_path = cost, bezier_curves, vertex_path
+    else:
+        for (vertex_path, bezier_curves) in solutions:
+            cost = get_path_cost(graph, vertex_path, bezier_curves, False, True, terminal_state=terminal_state)
+            if cost < best_cost:
+                best_cost, best_path, best_vertex_path = cost, bezier_curves, vertex_path
+        timer.dt("finding best", print_stuff = options.verbose_solve_times)
             
-    return best_cost, best_path, best_vertex_path, solver_time
+    return best_cost, best_path, best_vertex_path, total_solver_time
 
 
 def postprocess_the_path(graph:PolynomialDualGCS, 
