@@ -24,6 +24,8 @@ from pydrake.geometry.optimization import (  # pylint: disable=import-error, no-
     ConvexSet,
     Hyperrectangle,
 )
+
+
 import numbers
 import pydot
 
