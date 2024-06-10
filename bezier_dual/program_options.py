@@ -63,6 +63,13 @@ class ProgramOptions:
         self.policy_MSK_DPAR_INTPNT_CO_TOL_REL_GAP = 1e-6
         self.policy_MSK_DPAR_INTPNT_CO_TOL_PFEAS = 1e-6
         self.policy_MSK_DPAR_INTPNT_CO_TOL_DFEAS = 1e-6
+        
+
+        self.MSK_IPAR_PRESOLVE_USE = True
+        self.MSK_IPAR_INTPNT_SOLVE_FORM = "PRIMAL"
+
+        self.report_solver_time = True
+
 
         self.policy_verbose_choices = False
         self.policy_verbose_number_of_restrictions_solves = False

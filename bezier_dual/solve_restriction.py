@@ -137,7 +137,7 @@ def solve_parallelized_convex_restriction(
     terminal_state:npt.NDArray = None,
     one_last_solve:bool = False,
     verbose_solve_success = True
-) -> T.List[T.Tuple[T.List[DualVertex], T.List[T.List[npt.NDArray]]]]:
+) -> T.Tuple[T.List[T.Tuple[T.List[DualVertex], T.List[T.List[npt.NDArray]]]], float]:
 
     """
     solve a convex restriction over a vertex path
@@ -324,6 +324,16 @@ def solve_parallelized_convex_restriction(
                     "MSK_DPAR_INTPNT_CO_TOL_DFEAS",
                     options.policy_MSK_DPAR_INTPNT_CO_TOL_DFEAS,
                 )
+
+                if options.MSK_IPAR_PRESOLVE_USE:
+                    solver_options.SetOption(MosekSolver.id(), 
+                                            "MSK_IPAR_PRESOLVE_USE", 
+                                            "MSK_PRESOLVE_MODE_OFF")
+                
+                solver_options.SetOption(MosekSolver.id(), 
+                                          "MSK_IPAR_INTPNT_SOLVE_FORM", 
+                                          options.MSK_IPAR_INTPNT_SOLVE_FORM)
+                
             if options.policy_use_robust_mosek_params:
                 solver_options.SetOption(MosekSolver.id(), "MSK_DPAR_INTPNT_CO_TOL_REL_GAP", 1e-3)
                 solver_options.SetOption(MosekSolver.id(), "MSK_IPAR_INTPNT_SOLVE_FORM", 1)
@@ -333,7 +343,14 @@ def solve_parallelized_convex_restriction(
         else:
             solution = options.policy_solver().Solve(prog)
 
-    # timer.dt("just solving", print_stuff=options.verbose_solve_times)
+
+    if options.policy_solver == MosekSolver:
+        solver_solve_time = solution.get_solver_details().optimizer_time
+    elif options.policy_solver == ClarabelSolver:
+        solver_solve_time = solution.get_solver_details().solve_time
+    elif options.policy_solver == GurobiSolver:
+        solver_solve_time = solution.get_solver_details().optimizer_time
+
 
     final_result = [([], [])] * len(vertex_paths)
     if solution.is_success():
@@ -342,12 +359,12 @@ def solve_parallelized_convex_restriction(
             bezier_solutions = [[solution.GetSolution(control_point) for control_point in bezier_curve] for bezier_curve in bezier_curves]
             full_tuple = (v_path, bezier_solutions)
             final_result[i] = full_tuple
-        return final_result
+        return final_result, solver_solve_time
     else:
         WARN("failed to solve",verbose = verbose_solve_success)
         if verbose_failure:
             diditwork(solution)
-        return None
+        return None, solver_solve_time
     
 
 def solve_convex_restriction(
@@ -359,12 +376,12 @@ def solve_convex_restriction(
     verbose_failure:bool =False,
     terminal_state:npt.NDArray = None,
     one_last_solve = False
-) -> T.List[T.List[npt.NDArray]]:
-    result = solve_parallelized_convex_restriction(graph, [vertex_path], state_now, state_last, options, verbose_failure, terminal_state, one_last_solve, verbose_solve_success = False)
+) -> T.Tuple[T.List[T.List[npt.NDArray]], float]:
+    result, solver_solve_time = solve_parallelized_convex_restriction(graph, [vertex_path], state_now, state_last, options, verbose_failure, terminal_state, one_last_solve, verbose_solve_success = False)
     if result is None:
         return None
     else:
-        return result[0][1]
+        return result[0][1], solver_solve_time
     
 
 # ---

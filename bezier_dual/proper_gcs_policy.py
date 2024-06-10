@@ -162,7 +162,7 @@ def get_k_step_optimal_path(
     options: ProgramOptions = None,
     already_visited: T.List[DualVertex] = [],
     terminal_state: npt.NDArray = None,
-) -> T.Tuple[float, T.List[T.List[npt.NDArray]], T.List[DualVertex]]:
+) -> T.Tuple[float, T.List[T.List[npt.NDArray]], T.List[DualVertex], float]:
     """ 
     do not use this to compute optimal trajectories
     """
@@ -175,7 +175,7 @@ def get_k_step_optimal_path(
 
     # for every path -- solve convex restriction, add next states
     timer = timeit()
-    solutions = solve_parallelized_convex_restriction(graph, vertex_paths, state, last_state, options, terminal_state=terminal_state, one_last_solve=False)
+    solutions, solver_time = solve_parallelized_convex_restriction(graph, vertex_paths, state, last_state, options, terminal_state=terminal_state, one_last_solve=False)
     timer.dt("solving", print_stuff = options.verbose_solve_times)
 
     
@@ -188,7 +188,7 @@ def get_k_step_optimal_path(
             best_cost, best_path, best_vertex_path = cost, bezier_curves, vertex_path
     timer.dt("finding best", print_stuff = options.verbose_solve_times)
             
-    return best_cost, best_path, best_vertex_path
+    return best_cost, best_path, best_vertex_path, solver_time
 
 
 def postprocess_the_path(graph:PolynomialDualGCS, 
@@ -204,8 +204,9 @@ def postprocess_the_path(graph:PolynomialDualGCS,
     #     cost_before = get_path_cost(graph, vertex_path_so_far, full_path, False, True, terminal_state=terminal_state)
     # timer = timeit()
     # solve a convex restriction on the vertex sequence
+    solver_time = 0.0
     if options.postprocess_by_solving_restriction_on_mode_sequence:
-        full_path = solve_convex_restriction(graph, vertex_path_so_far, initial_state, initial_previous_state, options, terminal_state=terminal_state, one_last_solve = True)
+        full_path, solver_time = solve_convex_restriction(graph, vertex_path_so_far, initial_state, initial_previous_state, options, terminal_state=terminal_state, one_last_solve = True)
         # verbose
         # if options.verbose_restriction_improvement:
         #     cost_after = get_path_cost(graph, vertex_path_so_far, full_path, False, True, terminal_state=terminal_state)
@@ -219,7 +220,7 @@ def postprocess_the_path(graph:PolynomialDualGCS,
         #         "% worse",
         #     )
     # timer.dt("one last solve", print_stuff = options.verbose_solve_times)
-    return full_path
+    return full_path, solver_time
 
 class Node:
     def __init__(self, vertex_now: DualVertex, state_now:npt.NDArray, state_last:npt.NDArray, bezier_path_so_far:T.List[T.List[npt.NDArray]], vertex_path_so_far:T.List[DualVertex]):
@@ -244,7 +245,7 @@ def lookahead_policy(
     initial_previous_state: npt.NDArray = None,
     options: ProgramOptions = None,
     terminal_state: npt.NDArray = None,
-) -> T.Tuple[T.List[T.List[npt.NDArray]], T.List[DualVertex]]:
+) -> T.Tuple[T.List[T.List[npt.NDArray]], T.List[DualVertex], float]:
     """
     K-step lookahead rollout policy.
     Returns a list of bezier curves. Each bezier curve is a list of control points (numpy arrays).
@@ -257,9 +258,11 @@ def lookahead_policy(
     full_path = []  # type: T.List[T.List[npt.NDarray]]
     vertex_path_so_far = [vertex_now]  # type: T.List[DualVertex]
 
+    total_solver_time = 0.0
+
     while not vertex_now.vertex_is_target:
         # use a k-step lookahead to obtain optimal k-step lookahead path
-        _, bezier_path, vertex_path = get_k_step_optimal_path(
+        _, bezier_path, vertex_path, solver_time = get_k_step_optimal_path(
             graph,
             vertex_now,
             state_now,
@@ -268,6 +271,7 @@ def lookahead_policy(
             already_visited=vertex_path_so_far,
             terminal_state = terminal_state,
         )
+        total_solver_time += solver_time
         if bezier_path is None:
             WARN("k-step optimal path couldn't find a solution")
             return None, None
@@ -281,9 +285,10 @@ def lookahead_policy(
         )
         vertex_path_so_far.append(vertex_now)
 
-    full_path = postprocess_the_path(graph, vertex_path_so_far, full_path, initial_state, initial_previous_state, options, terminal_state)
+    full_path, solver_time = postprocess_the_path(graph, vertex_path_so_far, full_path, initial_state, initial_previous_state, options, terminal_state)
+    total_solver_time += solver_time
 
-    return full_path, vertex_path_so_far
+    return full_path, vertex_path_so_far, total_solver_time
 
 
 def lookahead_with_backtracking_policy(
@@ -293,7 +298,7 @@ def lookahead_with_backtracking_policy(
     initial_previous_state: npt.NDArray = None,
     options: ProgramOptions = None,
     terminal_state: npt.NDArray = None,
-) -> T.Tuple[T.List[T.List[npt.NDArray]], T.List[DualVertex]]:
+) -> T.Tuple[T.List[T.List[npt.NDArray]], T.List[DualVertex], float]:
     """
     K-step lookahead rollout policy.
     If you reach a point from which no action is available --
@@ -314,6 +319,7 @@ def lookahead_with_backtracking_policy(
     found_target = False
     target_node = None
     number_of_iterations = 0
+    total_solver_time = 0.0
 
 
     while not found_target:
@@ -343,7 +349,8 @@ def lookahead_with_backtracking_policy(
                 return None, None
             
             for vertex_path in vertex_paths:
-                bezier_curves = solve_convex_restriction(graph, vertex_path, node.state_now, node.state_last, options, terminal_state=terminal_state, one_last_solve=False)
+                bezier_curves, solver_time = solve_convex_restriction(graph, vertex_path, node.state_now, node.state_last, options, terminal_state=terminal_state, one_last_solve=False)
+                total_solver_time += solver_time
                 num_times_solved_convex_restriction += 1
                 if bezier_curves is not None:
                     add_edge_and_vertex_violations = options.policy_add_violation_penalties and not options.policy_use_zero_heuristic
@@ -377,12 +384,13 @@ def lookahead_with_backtracking_policy(
         INFO("solved the convex restriction", num_times_solved_convex_restriction, "times")
 
     if found_target:
-        full_path = postprocess_the_path(graph, target_node.vertex_path_so_far, target_node.bezier_path_so_far, initial_state, initial_previous_state, options, terminal_state)
-        return full_path, target_node.vertex_path_so_far
+        full_path, solver_time = postprocess_the_path(graph, target_node.vertex_path_so_far, target_node.bezier_path_so_far, initial_state, initial_previous_state, options, terminal_state)
+        total_solver_time += solver_time
+        return full_path, target_node.vertex_path_so_far, total_solver_time
         
     else:
         WARN("no path from start vertex to target!")
-        return None, None
+        return None, None, total_solver_time
 
 
 
@@ -408,6 +416,7 @@ def cheap_a_star_policy(
     que = PriorityQueue()
     que.put( (0.0, Node(vertex, initial_state, initial_previous_state, [], [vertex]) ) )
     num_times_solved_convex_restriction = 0
+    total_solver_time = 0.0
 
 
     found_target = False
@@ -427,7 +436,8 @@ def cheap_a_star_policy(
             # for every path -- solve convex restriction, add next states
             # print(len(vertex_paths))
             for vertex_path in vertex_paths:
-                bezier_curves = solve_convex_restriction(graph, vertex_path, node.state_now, node.state_last, options, terminal_state=terminal_state, one_last_solve=False)
+                bezier_curves, solver_time = solve_convex_restriction(graph, vertex_path, node.state_now, node.state_last, options, terminal_state=terminal_state, one_last_solve=False)
+                total_solver_time += solver_time
                 num_times_solved_convex_restriction += 1
                 # check if solution exists
                 if bezier_curves is not None:
@@ -445,12 +455,13 @@ def cheap_a_star_policy(
 
 
     if found_target:
-        full_path = postprocess_the_path(graph, target_node.vertex_path_so_far, target_node.bezier_path_so_far, initial_state, initial_previous_state, options, terminal_state)
-        return full_path, target_node.vertex_path_so_far
+        full_path, solver_time = postprocess_the_path(graph, target_node.vertex_path_so_far, target_node.bezier_path_so_far, initial_state, initial_previous_state, options, terminal_state)
+        total_solver_time += solver_time
+        return full_path, target_node.vertex_path_so_far, total_solver_time
         
     else:
         WARN("no path from start vertex to target!")
-        return None, None
+        return None, None, total_solver_time
     
 
 def cheap_a_star_policy_parallelized(
@@ -460,7 +471,7 @@ def cheap_a_star_policy_parallelized(
     initial_previous_state: npt.NDArray = None,
     options: ProgramOptions = None,
     terminal_state: npt.NDArray = None,
-) -> T.Tuple[T.List[T.List[npt.NDArray]], T.List[DualVertex]]:
+) -> T.Tuple[T.List[T.List[npt.NDArray]], T.List[DualVertex], float]:
     """
     K-step lookahead rollout policy.
     If you reach a point from which no action is available --
@@ -476,6 +487,7 @@ def cheap_a_star_policy_parallelized(
     que = PriorityQueue()
     que.put( (0.0, Node(vertex, initial_state, initial_previous_state, [], [vertex]) ) )
     num_times_solved_convex_restriction = 0
+    total_solver_time = 0.0
 
 
     found_target = False
@@ -496,7 +508,8 @@ def cheap_a_star_policy_parallelized(
             # for every path -- solve convex restriction, add next states
             # print(len(vertex_paths))
             timer = timeit()
-            solutions = solve_parallelized_convex_restriction(graph, vertex_paths, node.state_now, node.state_last, options, terminal_state=terminal_state, one_last_solve=False)
+            solutions, solver_time = solve_parallelized_convex_restriction(graph, vertex_paths, node.state_now, node.state_last, options, terminal_state=terminal_state, one_last_solve=False)
+            total_solver_time += solver_time
             timer.dt("solving", print_stuff = options.verbose_solve_times)
             num_times_solved_convex_restriction += 1
             for (vertex_path, bezier_curves) in solutions:
@@ -513,12 +526,13 @@ def cheap_a_star_policy_parallelized(
 
 
     if found_target:
-        full_path = postprocess_the_path(graph, target_node.vertex_path_so_far, target_node.bezier_path_so_far, initial_state, initial_previous_state, options, terminal_state)
-        return full_path, target_node.vertex_path_so_far
+        full_path, solver_time = postprocess_the_path(graph, target_node.vertex_path_so_far, target_node.bezier_path_so_far, initial_state, initial_previous_state, options, terminal_state)
+        total_solver_time += solver_time
+        return full_path, target_node.vertex_path_so_far, total_solver_time
         
     else:
         WARN("no path from start vertex to target!")
-        return None, None
+        return None, None, total_solver_time
            
 
 def obtain_rollout(
@@ -536,16 +550,19 @@ def obtain_rollout(
 
     timer = timeit()
     if options.use_lookahead_policy:
-        rollout_path, v_path = lookahead_policy(graph, vertex, state, last_state, options, terminal_state)
+        rollout_path, v_path, total_solver_time = lookahead_policy(graph, vertex, state, last_state, options, terminal_state)
     elif options.use_lookahead_with_backtracking_policy:
-        rollout_path, v_path = lookahead_with_backtracking_policy(graph, vertex, state, last_state, options, terminal_state)
+        rollout_path, v_path, total_solver_time = lookahead_with_backtracking_policy(graph, vertex, state, last_state, options, terminal_state)
     elif options.use_cheap_a_star_policy:
-        rollout_path, v_path = cheap_a_star_policy(graph, vertex, state, last_state, options, terminal_state)
+        rollout_path, v_path, total_solver_time = cheap_a_star_policy(graph, vertex, state, last_state, options, terminal_state)
     elif options.use_cheap_a_star_policy_parallelized:
-        rollout_path, v_path = cheap_a_star_policy_parallelized(graph, vertex, state, last_state, options, terminal_state)
+        rollout_path, v_path, total_solver_time = cheap_a_star_policy_parallelized(graph, vertex, state, last_state, options, terminal_state)
         
     dt = timer.dt(print_stuff = False)
-    return rollout_path, v_path, dt
+    if options.report_solver_time:
+        return rollout_path, v_path, total_solver_time
+    else:
+        return rollout_path, v_path, dt
 
 
 def get_statistics(
