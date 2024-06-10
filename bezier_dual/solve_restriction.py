@@ -324,15 +324,19 @@ def solve_parallelized_convex_restriction(
                     "MSK_DPAR_INTPNT_CO_TOL_DFEAS",
                     options.policy_MSK_DPAR_INTPNT_CO_TOL_DFEAS,
                 )
+                solver_options.SetOption(
+                    MosekSolver.id(),
+                    "MSK_DPAR_INTPNT_TOL_INFEAS",
+                    options.MSK_DPAR_INTPNT_TOL_INFEAS,
+                )
 
-                if options.MSK_IPAR_PRESOLVE_USE:
-                    solver_options.SetOption(MosekSolver.id(), 
-                                            "MSK_IPAR_PRESOLVE_USE", 
-                                            "MSK_PRESOLVE_MODE_OFF")
-                
-                solver_options.SetOption(MosekSolver.id(), 
-                                          "MSK_IPAR_INTPNT_SOLVE_FORM", 
-                                          options.MSK_IPAR_INTPNT_SOLVE_FORM)
+            solver_options.SetOption(MosekSolver.id(), 
+                                    "MSK_IPAR_PRESOLVE_USE", 
+                                    options.MSK_IPAR_PRESOLVE_USE)
+            
+            solver_options.SetOption(MosekSolver.id(), 
+                                        "MSK_IPAR_INTPNT_SOLVE_FORM", 
+                                        options.MSK_IPAR_INTPNT_SOLVE_FORM)
                 
             if options.policy_use_robust_mosek_params:
                 solver_options.SetOption(MosekSolver.id(), "MSK_DPAR_INTPNT_CO_TOL_REL_GAP", 1e-3)

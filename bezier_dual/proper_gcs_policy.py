@@ -387,7 +387,7 @@ def lookahead_with_backtracking_policy(
     if found_target:
         full_path, solver_time = postprocess_the_path(graph, target_node.vertex_path_so_far, target_node.bezier_path_so_far, initial_state, initial_previous_state, options, terminal_state)
         total_solver_time += solver_time
-        WARN("found target")
+        # WARN("found target")
         return full_path, target_node.vertex_path_so_far, total_solver_time
         
     else:

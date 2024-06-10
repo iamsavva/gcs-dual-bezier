@@ -63,6 +63,7 @@ class ProgramOptions:
         self.policy_MSK_DPAR_INTPNT_CO_TOL_REL_GAP = 1e-6
         self.policy_MSK_DPAR_INTPNT_CO_TOL_PFEAS = 1e-6
         self.policy_MSK_DPAR_INTPNT_CO_TOL_DFEAS = 1e-6
+        self.MSK_DPAR_INTPNT_TOL_INFEAS = 1e-6
         
 
         self.MSK_IPAR_PRESOLVE_USE = True
