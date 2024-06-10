@@ -197,7 +197,6 @@ def get_k_step_optimal_path(
             cost = get_path_cost(graph, vertex_path, bezier_curves, False, True, terminal_state=terminal_state)
             if cost < best_cost:
                 best_cost, best_path, best_vertex_path = cost, bezier_curves, vertex_path
-        timer.dt("finding best", print_stuff = options.verbose_solve_times)
             
     return best_cost, best_path, best_vertex_path, total_solver_time
 
