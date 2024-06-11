@@ -337,68 +337,89 @@ class GoalConditionedDualEdge(DualEdge):
         # -----------------------------------------------
         # make n+1 SOS constraints
 
-        # -----------------------------------------------
-        # J_{v} to J_{vw,1}
-        x_left, x_right = self.left.x, self.x_vectors[0]
-        B_left, B_right = self.left.B, self.left.B
-        edge_cost = self.cost_function(x_left, x_right, xt)
-        # G_of_v = self.left.eval_G(x_right - x_left)
-        G_of_v = self.left.G_expression.Substitute({x_left[i]: (x_right[i] - x_left[i]) for i in range(len(x_right))})
-        left_potential = self.left.potential
-        right_potential = self.potentials[0]
-
-        # expr = edge_cost + right_potential - left_potential - G_of_v+ self.bidirectional_edge_violation/(self.options.num_control_points-1)
-        expr = edge_cost + right_potential - left_potential - G_of_v
-        define_sos_constraint_over_polyhedron_multivar(prog, [x_left, x_right, xt], [B_left, B_right, Bt], expr, opt)
-        # define_sos_constraint_over_polyhedron(prog, x_left, x_right, expr, B_left, B_right, opt)
-
-        # -------------------------------------------------
-        # J_{vw, k} to J_{vw,k+1}
-        for k in range(self.options.num_control_points - 3):
-            x_left, x_right = self.x_vectors[k], self.x_vectors[k + 1]
+        if self.options.num_control_points >= 3:
+            # -----------------------------------------------
+            # J_{v} to J_{vw,1}
+            x_left, x_right = self.left.x, self.x_vectors[0]
             B_left, B_right = self.left.B, self.left.B
             edge_cost = self.cost_function(x_left, x_right, xt)
-            left_potential = self.potentials[k]
-            right_potential = self.potentials[k + 1]
+            # G_of_v = self.left.eval_G(x_right - x_left)
+            G_of_v = self.left.G_expression.Substitute({x_left[i]: (x_right[i] - x_left[i]) for i in range(len(x_right))})
+            left_potential = self.left.potential
+            right_potential = self.potentials[0]
 
-            # expr = edge_cost + right_potential - left_potential+ self.bidirectional_edge_violation/(self.options.num_control_points-1)
-            expr = edge_cost + right_potential - left_potential
+            expr = edge_cost + right_potential - left_potential - G_of_v
             define_sos_constraint_over_polyhedron_multivar(prog, [x_left, x_right, xt], [B_left, B_right, Bt], expr, opt)
-            # define_sos_constraint_over_polyhedron(prog, x_left, x_right, expr, B_left, B_right, opt)
 
-        # -------------------------------------------------
-        # J_{vw, n} to J_{w}
-        n = self.options.num_control_points - 3
-        x_left, x_right = self.x_vectors[n], self.right.x
-        B_left, B_right = self.left.B, self.B_intersection
-        edge_cost = self.cost_function(x_left, x_right, xt)
-        # G_of_v = self.right.eval_G(x_right - x_left)
-        G_of_v = self.right.G_expression.Substitute({x_right[i]: (x_right[i] - x_left[i]) for i in range(len(x_right))})
-        left_potential = self.potentials[n]
-        right_potential = self.right.potential
+            # -------------------------------------------------
+            # J_{vw, k} to J_{vw,k+1}
+            for k in range(self.options.num_control_points - 3):
+                x_left, x_right = self.x_vectors[k], self.x_vectors[k + 1]
+                B_left, B_right = self.left.B, self.left.B
+                edge_cost = self.cost_function(x_left, x_right, xt)
+                left_potential = self.potentials[k]
+                right_potential = self.potentials[k + 1]
 
-        # NOTE: adding bidriectional edge violation just to the last constraint
-        # expr = edge_cost + right_potential + G_of_v - left_potential + self.bidirectional_edge_violation/(self.options.num_control_points-1)
-        if self.right.vertex_is_target:
-            edge_cost = self.cost_function(x_left, xt, xt)
-            expr = (
-                edge_cost
-                - left_potential
-                + self.bidirectional_edge_violation
-                + self.right.total_flow_in_violation
-            )
-            define_sos_constraint_over_polyhedron_multivar(prog, [x_left, xt], [B_left, Bt], expr, opt)
+                expr = edge_cost + right_potential - left_potential
+                define_sos_constraint_over_polyhedron_multivar(prog, [x_left, x_right, xt], [B_left, B_right, Bt], expr, opt)
+
+            # -------------------------------------------------
+            # J_{vw, n} to J_{w}
+            n = self.options.num_control_points - 3
+            x_left, x_right = self.x_vectors[n], self.right.x
+            B_left, B_right = self.left.B, self.B_intersection
+            edge_cost = self.cost_function(x_left, x_right, xt)
+            G_of_v = self.right.G_expression.Substitute({x_right[i]: (x_right[i] - x_left[i]) for i in range(len(x_right))})
+            left_potential = self.potentials[n]
+            right_potential = self.right.potential
+
+            # NOTE: adding bidriectional edge violation just to the last constraint
+            if self.right.vertex_is_target:
+                edge_cost = self.cost_function(x_left, xt, xt)
+                expr = (
+                    edge_cost
+                    - left_potential
+                    + self.bidirectional_edge_violation
+                    + self.right.total_flow_in_violation
+                )
+                define_sos_constraint_over_polyhedron_multivar(prog, [x_left, xt], [B_left, Bt], expr, opt)
+            else:
+                expr = (
+                    edge_cost
+                    + right_potential
+                    + G_of_v
+                    - left_potential
+                    + self.bidirectional_edge_violation
+                    + self.right.total_flow_in_violation
+                )
+                define_sos_constraint_over_polyhedron_multivar(prog, [x_left, x_right, xt], [B_left, B_right, Bt], expr, opt)
         else:
-            expr = (
-                edge_cost
-                + right_potential
-                + G_of_v
-                - left_potential
-                + self.bidirectional_edge_violation
-                + self.right.total_flow_in_violation
-            )
-            define_sos_constraint_over_polyhedron_multivar(prog, [x_left, x_right, xt], [B_left, B_right, Bt], expr, opt)
-        # define_sos_constraint_over_polyhedron(prog, x_left, x_right, expr, B_left, B_right, opt)
+            # -----------------------------------------------
+            # J_{v} to J_{vw,1}
+            x_left, x_right = self.left.x, self.right.x
+            B_left, B_right = self.left.B, self.B_intersection
+            edge_cost = self.cost_function(x_left, x_right, xt)
+            left_potential = self.left.potential
+            right_potential = self.right.potential
+
+            if self.right.vertex_is_target:
+                edge_cost = self.cost_function(x_left, xt, xt)
+                expr = (
+                    edge_cost
+                    - left_potential
+                    + self.bidirectional_edge_violation
+                    + self.right.total_flow_in_violation
+                )
+                define_sos_constraint_over_polyhedron_multivar(prog, [x_left, xt], [B_left, Bt], expr, opt)
+            else:
+                expr = (
+                    edge_cost
+                    + right_potential
+                    - left_potential
+                    + self.bidirectional_edge_violation
+                    + self.right.total_flow_in_violation
+                )
+                define_sos_constraint_over_polyhedron_multivar(prog, [x_left, x_right, xt], [B_left, B_right, Bt], expr, opt)
 
 
 class GoalConditionedPolynomialDualGCS(PolynomialDualGCS):
@@ -628,12 +649,13 @@ class GoalConditionedPolynomialDualGCS(PolynomialDualGCS):
                 gcs_e.AddConstraint(con)
 
             # C-1 continuity
-            if not e.right.vertex_is_target:
-                v0 = (get_kth_control_point(gcs_e.xv(), 1, k) - get_kth_control_point(gcs_e.xv(), 0, k))
-                v_1 = (get_kth_control_point(gcs_e.xu(), k-1, k) - get_kth_control_point(gcs_e.xu(), k-2, k))
-                cons = eq( v0, v_1 )
-                for con in cons:
-                    gcs_e.AddConstraint(con)
+            if self.options.policy_use_c_1_continuity:
+                if not e.right.vertex_is_target:
+                    v0 = (get_kth_control_point(gcs_e.xv(), 1, k) - get_kth_control_point(gcs_e.xv(), 0, k))
+                    v_1 = (get_kth_control_point(gcs_e.xu(), k-1, k) - get_kth_control_point(gcs_e.xu(), k-2, k))
+                    cons = eq( v0, v_1 )
+                    for con in cons:
+                        gcs_e.AddConstraint(con)
 
             # C-2 continuity
             if self.options.policy_use_c_2_continuity:

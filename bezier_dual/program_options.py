@@ -92,6 +92,7 @@ class ProgramOptions:
 
         self.flow_violation_polynomial_degree = 0
 
+        self.policy_uce_c_1_continuity = False
         self.policy_use_c_2_continuity = False
         self.policy_use_l2_norm_cost = False
         self.policy_use_quadratic_cost = False
@@ -116,8 +117,8 @@ class ProgramOptions:
 
     def vertify_options_validity(self):
         assert (
-            self.num_control_points >= 3
-        ), "need at least 1 control point in the interior, 3 total"
+            self.num_control_points >= 2
+        ), "need at least 0 control point in the interior, 2 total"
         assert self.policy_lookahead >= 1, "lookahead must be positive"
         assert self.pot_type in (
             FREE_POLY,

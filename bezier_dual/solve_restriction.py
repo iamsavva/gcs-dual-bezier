@@ -211,23 +211,24 @@ def solve_parallelized_convex_restriction(
 
                 # C-1 continuity: add constraint that ensures that next point is feasible
                 if not vertex.vertex_is_target:
-                    # next_x = prog.NewContinuousVariables(vertex_path[0].state_dim)
-                    # prog.AddLinearConstraint(eq(next_x, last_x + last_delta)) 
-                    # add_ge_lin_con(vertex.B, next_x)
-                    A = -vertex.B[:, 1:]
-                    b = vertex.B[:, 0]
-                    prog.AddLinearConstraint(np.hstack((2*A, -A)), 
-                                            -np.infty*np.ones( A.shape[0]),
-                                            b,
-                                            np.hstack( (bezier_curves[-1][-1], bezier_curves[-1][-2]) ) )
+                    if options.policy_use_c_1_continuity:
+                        # next_x = prog.NewContinuousVariables(vertex_path[0].state_dim)
+                        # prog.AddLinearConstraint(eq(next_x, last_x + last_delta)) 
+                        # add_ge_lin_con(vertex.B, next_x)
+                        A = -vertex.B[:, 1:]
+                        b = vertex.B[:, 0]
+                        prog.AddLinearConstraint(np.hstack((2*A, -A)), 
+                                                -np.infty*np.ones( A.shape[0]),
+                                                b,
+                                                np.hstack( (bezier_curves[-1][-1], bezier_curves[-1][-2]) ) )
 
-                    # C-2 continuity: add constraint that ensures that next-next point is feasible    
-                    # NOTE: this is broken rn
-                    # if options.policy_use_c_2_continuity:
-                    #     prog.AddLinearConstraint(np.hstack((4*A, -4*A, A)), 
-                    #                             -np.infty*np.ones( A.shape[0]),
-                    #                             b,
-                    #                             np.hstack( (bezier_curves[-1][-1], bezier_curves[-1][-2], bezier_curves[-1][-3]) ) )
+                        # C-2 continuity: add constraint that ensures that next-next point is feasible    
+                        # NOTE: this is broken rn
+                        # if options.policy_use_c_2_continuity:
+                        #     prog.AddLinearConstraint(np.hstack((4*A, -4*A, A)), 
+                        #                             -np.infty*np.ones( A.shape[0]),
+                        #                             b,
+                        #                             np.hstack( (bezier_curves[-1][-1], bezier_curves[-1][-2], bezier_curves[-1][-3]) ) )
                     
 
             else:
@@ -261,9 +262,10 @@ def solve_parallelized_convex_restriction(
                     last_x = x_j
 
                 # C-1 continuity
-                if last_delta is not None:
-                    v0 = bezier_curve[1] - bezier_curve[0]
-                    prog.AddLinearConstraint(eq(v0, last_delta))
+                if options.policy_use_c_1_continuity:
+                    if last_delta is not None:
+                        v0 = bezier_curve[1] - bezier_curve[0]
+                        prog.AddLinearConstraint(eq(v0, last_delta))
 
                 # C-2 continuity
                 if graph.options.policy_use_c_2_continuity:
@@ -279,25 +281,6 @@ def solve_parallelized_convex_restriction(
                 # store the bezier curve
                 bezier_curves.append(bezier_curve)
 
-            # on all but the initial vertex:
-            # if i > 0:
-            #     # add flow violation penalty.
-            #     # only do so so far as we are using heuristic values
-            #     if options.policy_add_violation_penalties and not options.policy_use_zero_heuristic:
-            #         edge = graph.edges[get_edge_name(vertex_path[i-1].name, vertex.name)]
-            #         vcost = graph.value_function_solution.GetSolution(edge.bidirectional_edge_violation)
-            #         vcost += graph.value_function_solution.GetSolution(vertex.total_flow_in_violation)
-            #         prog.AddLinearCost(vcost)
-
-            #     NOTE: add the G term. 
-            #     NOTE: this will make the problem non-convex
-            #     TODO: is this is a hack or genuinly useful.
-                # if options.policy_add_G_term:
-                #     G_expression = graph.value_function_solution.GetSolution(vertex.G_expression)
-                #     G_expression = G_expression.Substitute({vertex.x[i]: last_delta[i] for i in range(vertex.state_dim)})
-                #     if terminal_state is not None:
-                #         G_expression = G_expression.Substitute({vertex.xt[i]: terminal_state[i] for i in range(vertex.state_dim)})
-                #     prog.AddCost(G_expression)
 
         all_bezier_curves.append(bezier_curves)
 

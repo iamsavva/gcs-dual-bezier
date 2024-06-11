@@ -380,6 +380,7 @@ def lookahead_with_backtracking_policy(
                 total_solver_time += max_solve_time
                 decision_index += 1
             else:
+
                 # for every path -- solve convex restriction, add next states
                 
                 solutions, solver_time = solve_parallelized_convex_restriction(graph, vertex_paths, node.state_now, node.state_last, options, terminal_state=terminal_state, one_last_solve=False)
