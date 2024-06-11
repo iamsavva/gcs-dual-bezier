@@ -91,6 +91,7 @@ class BaseGCS:
             results_dict["relaxation_result"] = result
             try:
                 results_dict["relaxation_solver_time"] = result.get_solver_details().optimizer_time
+                print("relaxation_solver_time", result.get_solver_details().optimizer_time)
             except:
                 results_dict["relaxation_solver_time"] = result.get_solver_details().solve_time
             results_dict["relaxation_cost"] = result.get_optimal_cost()
@@ -171,6 +172,7 @@ class BaseGCS:
             results_dict["max_rounded_solver_time"] =  max_rounded_solver_time
             results_dict["total_rounded_solver_time"] = total_rounded_solver_time
             results_dict["rounded_cost"] = best_result.get_optimal_cost()
+            print("max_rounded_solver_time", max_rounded_solver_time)
 
             if verbose:
                 print("Rounded Solutions:")

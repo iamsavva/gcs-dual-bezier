@@ -526,12 +526,25 @@ def get_optimal_path_new(
         gcs_options.solver = options.gcs_policy_solver()
         gcs_options.solver_options = SolverOptions()
 
+    gcs_options.solver_options.SetOption(MosekSolver.id(),
+                                            'MSK_DPAR_INTPNT_TOL_PFEAS',
+                                            options.policy_MSK_DPAR_INTPNT_CO_TOL_PFEAS)
+    gcs_options.solver_options.SetOption(MosekSolver.id(),
+                                            'MSK_DPAR_INTPNT_TOL_DFEAS',
+                                            options.policy_MSK_DPAR_INTPNT_CO_TOL_DFEAS)
+    gcs_options.solver_options.SetOption(MosekSolver.id(),
+                                            'MSK_DPAR_INTPNT_TOL_REL_GAP',
+                                            options.policy_MSK_DPAR_INTPNT_CO_TOL_REL_GAP)
+    gcs_options.solver_options.SetOption(MosekSolver.id(),
+                                            'MSK_DPAR_INTPNT_TOL_INFEAS',
+                                            options.MSK_DPAR_INTPNT_TOL_INFEAS)
 
     base_gcs = BaseGCS(gcs, gcs_options, start_vertex, pseudo_terminal_vertex)
     base_gcs.setRoundingStrategy(randomForwardPathSearch,
                                 max_paths=options.gcs_policy_max_rounded_paths,
                                 max_trials=options.gcs_policy_max_rounding_trials,
                                 seed=0)
+    
     
     best_path, best_result, results_dict = base_gcs.solveGCS(options.gcs_policy_use_convex_relaxation, options.gcs_policy_use_preprocessing, False)
 
