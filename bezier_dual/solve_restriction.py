@@ -74,6 +74,7 @@ from plot_utils import plot_bezier
 
 
 from gcs.base import BaseGCS
+from gcs.rounding import randomForwardPathSearch
 
 
 # ---------------------------------------------------------------------
@@ -518,15 +519,20 @@ def get_optimal_path_new(
 
     gcs_options = GraphOfConvexSetsOptions()
     # gcs_options.convex_relaxation = options.gcs_policy_use_convex_relaxation
-    gcs_options.max_rounding_trials = options.gcs_policy_max_rounding_trials
+    # gcs_options.max_rounding_trials = options.gcs_policy_max_rounding_trials
     # gcs_options.preprocessing = options.gcs_policy_use_preprocessing
-    gcs_options.max_rounded_paths = options.gcs_policy_max_rounded_paths
+    # gcs_options.max_rounded_paths = options.gcs_policy_max_rounded_paths
     if options.gcs_policy_solver is not None:
         gcs_options.solver = options.gcs_policy_solver()
         gcs_options.solver_options = SolverOptions()
 
 
     base_gcs = BaseGCS(gcs, gcs_options, start_vertex, pseudo_terminal_vertex)
+    gcs.setRoundingStrategy(randomForwardPathSearch,
+                                max_paths=options.gcs_policy_max_rounded_paths,
+                                max_trials=options.gcs_policy_max_rounding_trials,
+                                seed=0)
+    
     best_path, best_result, results_dict = base_gcs.solveGCS(options.gcs_policy_use_convex_relaxation, options.gcs_policy_use_preprocessing, False)
 
     # dt = timer.dt("just SolveShortestPath solve time", print_stuff=options.verbose_solve_times)
