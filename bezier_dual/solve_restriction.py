@@ -479,7 +479,6 @@ def get_optimal_path(
     return dt, cost, value_path, [graph.vertices[name] for name in vertex_name_path]
 
 
-
 def get_optimal_path_new(
     graph: PolynomialDualGCS,
     vertex: DualVertex,
