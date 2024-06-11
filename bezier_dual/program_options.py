@@ -66,6 +66,8 @@ class ProgramOptions:
         self.MSK_DPAR_INTPNT_TOL_INFEAS = 1e-6
 
         self.total_solver_time_add = False
+
+        self.use_science_robotics_reporting = True
         
 
         self.MSK_IPAR_PRESOLVE_USE = True

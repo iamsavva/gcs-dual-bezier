@@ -528,7 +528,7 @@ def get_optimal_path_new(
 
 
     base_gcs = BaseGCS(gcs, gcs_options, start_vertex, pseudo_terminal_vertex)
-    gcs.setRoundingStrategy(randomForwardPathSearch,
+    base_gcs.setRoundingStrategy(randomForwardPathSearch,
                                 max_paths=options.gcs_policy_max_rounded_paths,
                                 max_trials=options.gcs_policy_max_rounding_trials,
                                 seed=0)
