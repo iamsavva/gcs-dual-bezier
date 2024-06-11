@@ -361,7 +361,7 @@ def lookahead_with_backtracking_policy(
             
             
             if options.use_science_robotics_reporting:
-                max_solve_time = -1
+                max_solve_time = 0
                 for vertex_path in vertex_paths:
                     bezier_curves, solver_time = solve_convex_restriction(graph, vertex_path, node.state_now, node.state_last, options, terminal_state=terminal_state, one_last_solve=False)
                     if max_solve_time < solver_time:
@@ -421,6 +421,7 @@ def lookahead_with_backtracking_policy(
 
     if found_target:
         full_path, solver_time = postprocess_the_path(graph, target_node.vertex_path_so_far, target_node.bezier_path_so_far, initial_state, initial_previous_state, options, terminal_state)
+        print("postprocess", solver_time)
         total_solver_time += solver_time
         # WARN("found target")
         return full_path, target_node.vertex_path_so_far, total_solver_time
