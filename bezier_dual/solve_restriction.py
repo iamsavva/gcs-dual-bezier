@@ -73,6 +73,8 @@ from bezier_dual_goal_conditioned import GoalConditionedDualEdge, GoalConditione
 from plot_utils import plot_bezier
 
 
+from gcs.base import BaseGCS
+
 
 # ---------------------------------------------------------------------
 # ---------------------------------------------------------------------
@@ -450,18 +452,6 @@ def get_optimal_path(
     if options.gcs_policy_solver is not None:
         gcs_options.solver = options.gcs_policy_solver()
         gcs_options.solver_options = SolverOptions()
-        # gcs_options.solver_options.SetOption(MosekSolver.id(),
-        #                                      'MSK_DPAR_INTPNT_TOL_PFEAS',
-        #                                      1e-3)
-        # gcs_options.solver_options.SetOption(MosekSolver.id(),
-        #                                      'MSK_DPAR_INTPNT_TOL_DFEAS',
-        #                                      1e-3)
-        # gcs_options.solver_options.SetOption(MosekSolver.id(),
-        #                                      'MSK_DPAR_INTPNT_TOL_REL_GAP',
-        #                                      1e-3)
-        # gcs_options.solver_options.SetOption(MosekSolver.id(),
-        #                                      'MSK_DPAR_INTPNT_TOL_INFEAS',
-        #                                      1e-3)
 
     # solve
     timer = timeit()
@@ -487,4 +477,80 @@ def get_optimal_path(
         assert np.allclose(value_path[-1][-1], terminal_state), "terminal state isn't 0, why?"
         
     return dt, cost, value_path, [graph.vertices[name] for name in vertex_name_path]
+
+
+
+def get_optimal_path_new(
+    graph: PolynomialDualGCS,
+    vertex: DualVertex,
+    state: npt.NDArray,
+    options: ProgramOptions = None,
+    terminal_state:npt.NDArray = None
+) -> T.Tuple[float, float, T.List[T.List[npt.NDArray]], T.List[DualVertex]]:
+    """
+    return (time, cost, bezier path, vertex path) of the optimal solution.
+    """
+    if options is None:
+        options = graph.options
+
+    if terminal_state is not None:
+        gcs, vertices, pseudo_terminal_vertex = graph.export_a_gcs(terminal_state)
+    else:
+        gcs, vertices, pseudo_terminal_vertex = graph.export_a_gcs()
+
+    k = options.num_control_points
+    
+    # set initial vertex constraint
+    start_vertex = vertices[vertex.name]
+    first_point = get_kth_control_point(start_vertex.x(), 0, k)
+    cons = eq(first_point, state)
+    for con in cons:
+        start_vertex.AddConstraint( con )
+
+    # set terminal vertex constraint:
+    if terminal_state is not None:
+        assert isinstance(graph, GoalConditionedPolynomialDualGCS), "passed terminal state but not a Goal Conditioned policy"
+        terminal_vertex = vertices[graph.terminal_vertex.name]
+        last_point = terminal_vertex.x()
+        assert len(last_point) == graph.terminal_vertex.state_dim
+        cons = eq(last_point, terminal_state)
+        for con in cons:
+            terminal_vertex.AddConstraint( con )
+
+    gcs_options = GraphOfConvexSetsOptions()
+    # gcs_options.convex_relaxation = options.gcs_policy_use_convex_relaxation
+    gcs_options.max_rounding_trials = options.gcs_policy_max_rounding_trials
+    # gcs_options.preprocessing = options.gcs_policy_use_preprocessing
+    gcs_options.max_rounded_paths = options.gcs_policy_max_rounded_paths
+    if options.gcs_policy_solver is not None:
+        gcs_options.solver = options.gcs_policy_solver()
+        gcs_options.solver_options = SolverOptions()
+
+
+    base_gcs = BaseGCS(gcs, gcs_options, start_vertex, pseudo_terminal_vertex)
+    best_path, best_result, results_dict = base_gcs.solveGCS(options.gcs_policy_use_convex_relaxation, options.gcs_policy_use_preprocessing, False)
+
+    # dt = timer.dt("just SolveShortestPath solve time", print_stuff=options.verbose_solve_times)
+    run_time = 0.0
+    run_time += results_dict["relaxation_solver_time"]
+    run_time += results_dict["max_rounded_solver_time"]  # only take the max since rounding can be parallelized
+
+    assert best_result.is_success()
+    cost = best_result.get_optimal_cost()
+    if options.verbose_solve_times:
+        diditwork(best_result)
+
+    edge_path = gcs.GetSolutionPath(start_vertex, pseudo_terminal_vertex, best_result)
+    vertex_name_path = []
+    value_path = []
+    for e in edge_path[:-1]:
+        vertex_name_path.append(e.u().name())
+        full_curve = best_result.GetSolution(e.u().x())
+        split_up_curve = full_curve.reshape( (k, vertex.state_dim) )
+        value_path.append([x for x in split_up_curve])
+    vertex_name_path.append(edge_path[-1].u().name())
+    if terminal_state is not None:
+        assert np.allclose(value_path[-1][-1], terminal_state), "terminal state isn't 0, why?"
+        
+    return run_time, cost, value_path, [graph.vertices[name] for name in vertex_name_path]
 

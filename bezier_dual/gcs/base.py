@@ -24,7 +24,6 @@ def polytopeDimension(A, b, tol=1e-4):
     eq = []
 
     while True:
-        
         ineq = [i for i in range(m) if i not in eq]
         A_ineq = A[ineq]
         b_ineq = b[ineq]
@@ -57,104 +56,14 @@ def polytopeDimension(A, b, tol=1e-4):
         b_eq = b[eq]
 
 class BaseGCS:
-    def __init__(self, regions):
-        self.names = None
-        if type(regions) is dict:
-            self.names = list(regions.keys())
-            regions = list(regions.values())
-        else:
-            self.names = ["v" + str(ii) for ii in range(len(regions))]
-        self.dimension = regions[0].ambient_dimension()
-        self.regions = regions.copy()
+    def __init__(self, gcs:GraphOfConvexSets, options:GraphOfConvexSetsOptions, source:GraphOfConvexSets.Vertex, target:GraphOfConvexSets.Vertex):
         self.rounding_fn = []
         self.rounding_kwargs = {}
-        for r in self.regions:
-            assert r.ambient_dimension() == self.dimension
 
-        self.gcs = GraphOfConvexSets()
-        self.options = GraphOfConvexSetsOptions()
-        self.source = None
-        self.target = None
-
-    def addSourceTarget(self, source, target, edges=None):
-        if self.source is not None or self.target is not None:
-            self.gcs.RemoveVertex(self.source)
-            self.gcs.RemoveVertex(self.target)
-
-        assert len(source) == self.dimension
-        assert len(target) == self.dimension
-
-        vertices = self.gcs.Vertices()
-        # Add edges connecting source and target to graph
-        self.source = self.gcs.AddVertex(Point(source), "source")
-        self.target = self.gcs.AddVertex(Point(target), "target")
-
-        # Add edges connecting source and target to graph
-        if edges is None:
-            edges = self.findStartGoalEdges(source, target)
-
-        if not (len(edges[0]) > 0):
-            raise ValueError('Source vertex is not connected.')
-        if not (len(edges[1]) > 0):
-            raise ValueError('Target vertex is not connected.')
-
-        source_edges = []
-        target_edges = []
-        for ii in edges[0]:
-            u = vertices[ii]
-            edge = self.gcs.AddEdge(self.source, u, f"(source, {u.name()})")
-            source_edges.append(edge)
-
-        for ii in edges[1]:
-            u = vertices[ii]
-            edge = self.gcs.AddEdge(u, self.target, f"({u.name()}, target)")
-            target_edges.append(edge)
-
-        return source_edges, target_edges
-
-    def findEdgesViaOverlaps(self):
-        edges = []
-        for ii in range(len(self.regions)):
-            for jj in range(ii + 1, len(self.regions)):
-                if self.regions[ii].IntersectsWith(self.regions[jj]):
-                    edges.append((ii, jj))
-                    edges.append((jj, ii))
-        return edges
-
-    def findEdgesViaFullDimensionOverlaps(self):
-        edges = []
-        for ii in range(len(self.regions)):
-            for jj in range(ii + 1, len(self.regions)):
-                A = np.vstack((self.regions[ii].A(), self.regions[jj].A()))
-                b = np.concatenate((self.regions[ii].b(), self.regions[jj].b()))
-                if polytopeDimension(A, b) >= self.dimension - 1:
-                    edges.append((ii, jj))
-                    edges.append((jj, ii))
-        return edges
-
-    def findStartGoalEdges(self, start, goal):
-        edges = [[], []]
-        for ii in range(len(self.regions)):
-            if self.regions[ii].PointInSet(start):
-                edges[0].append(ii)
-            if self.regions[ii].PointInSet(goal):
-                edges[1].append(ii)
-        return edges
-
-    def setSolver(self, solver):
-        self.options.solver = solver
-
-    def setSolverOptions(self, options):
-        self.options.solver_options = options
-
-    def setPaperSolverOptions(self):
-        solver_options = SolverOptions()
-        solver_options.SetOption(CommonSolverOption.kPrintToConsole, 1)
-        solver_options.SetOption(MosekSolver.id(), "MSK_DPAR_INTPNT_CO_TOL_REL_GAP", 1e-3)
-        solver_options.SetOption(MosekSolver.id(), "MSK_IPAR_INTPNT_SOLVE_FORM", 1)
-        solver_options.SetOption(MosekSolver.id(), "MSK_DPAR_MIO_TOL_REL_GAP", 1e-3)
-        solver_options.SetOption(MosekSolver.id(), "MSK_DPAR_MIO_MAX_TIME", 3600.0)
-        self.options.solver_options = solver_options
+        self.gcs = gcs
+        self.options = options
+        self.source = source
+        self.target = target
 
     def setRoundingStrategy(self, rounding_fn, **kwargs):
         self.rounding_kwargs = kwargs
@@ -168,27 +77,6 @@ class BaseGCS:
         else:
             raise ValueError("Rounding strategy must either be "
                              "a function or list of functions.")
-
-    def ResetGraph(self, vertices=None):
-        if vertices is None:
-            vertices = [self.source, self.target]
-            self.source = None
-            self.target = None
-        for v in vertices:
-            self.gcs.RemoveVertex(v)
-        for edge in self.gcs.Edges():
-            edge.ClearPhiConstraints()
-
-    def VisualizeGraph(self, file_type="svg"):
-        graphviz = self.gcs.GetGraphvizString(None, False)
-        data = pydot.graph_from_dot_data(graphviz)[0]
-        if file_type == "svg":
-            return data.create_svg()
-        elif file_type == "png":
-            return data.create_png()
-        else:
-            raise ValueError("Unrecognized file type:", file_type)
-
 
     def solveGCS(self, rounding, preprocessing, verbose):
 
