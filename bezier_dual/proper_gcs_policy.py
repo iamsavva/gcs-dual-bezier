@@ -376,10 +376,9 @@ def lookahead_with_backtracking_policy(
                             decision_options[decision_index + 1].put( (cost_of_path, next_node ))
                         except:
                             print(cost_of_path, next_node)
-                num_parallel_solves = np.ceil(len(vertex_paths)/options.num_simulated_cores)
-                # inds = np.argpartition(solve_times, -num_parallel_solves)[-num_parallel_solves:]
-                # total_solver_time += np.sum(solve_times[inds])
-                total_solver_time += np.max(solve_times)*num_parallel_solves
+                if len(solve_times) > 0:
+                    num_parallel_solves = np.ceil(len(vertex_paths)/options.num_simulated_cores)
+                    total_solver_time += np.max(solve_times)*num_parallel_solves
                 decision_index += 1
             else:
 
