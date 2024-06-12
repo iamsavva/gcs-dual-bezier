@@ -46,6 +46,7 @@ class ProgramOptions:
         self.num_control_points = 4
         self.postprocess_by_solving_restriction_on_mode_sequence = True
         self.verbose_restriction_improvement = False
+        
 
         # ----------------------------------
         # specify the policy
@@ -68,6 +69,7 @@ class ProgramOptions:
         self.total_solver_time_add = False
 
         self.use_science_robotics_reporting = True
+        self.num_simulated_cores = 20
         
 
         self.MSK_IPAR_PRESOLVE_USE = True

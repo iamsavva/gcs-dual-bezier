@@ -361,11 +361,10 @@ def lookahead_with_backtracking_policy(
             
             
             if options.use_science_robotics_reporting:
-                max_solve_time = 0
+                solve_times = []
                 for vertex_path in vertex_paths:
                     bezier_curves, solver_time = solve_convex_restriction(graph, vertex_path, node.state_now, node.state_last, options, terminal_state=terminal_state, one_last_solve=False)
-                    if max_solve_time < solver_time:
-                        max_solve_time = solver_time
+                    solve_times.append(solver_time)
                     num_times_solved_convex_restriction += 1
                     if bezier_curves is not None:
                         add_edge_and_vertex_violations = options.policy_add_violation_penalties and not options.policy_use_zero_heuristic
@@ -377,7 +376,10 @@ def lookahead_with_backtracking_policy(
                             decision_options[decision_index + 1].put( (cost_of_path, next_node ))
                         except:
                             print(cost_of_path, next_node)
-                total_solver_time += max_solve_time
+                num_parallel_solves = np.ceil(len(vertex_paths)/options.num_simulated_cores)
+                # inds = np.argpartition(solve_times, -num_parallel_solves)[-num_parallel_solves:]
+                # total_solver_time += np.sum(solve_times[inds])
+                total_solver_time += np.max(solve_times)*num_parallel_solves
                 decision_index += 1
             else:
 

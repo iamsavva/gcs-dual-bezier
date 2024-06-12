@@ -534,7 +534,9 @@ def get_optimal_path_new(
     # dt = timer.dt("just SolveShortestPath solve time", print_stuff=options.verbose_solve_times)
     run_time = 0.0
     run_time += results_dict["relaxation_solver_time"]
-    run_time += results_dict["max_rounded_solver_time"]  # only take the max since rounding can be parallelized
+    run_time += results_dict["max_rounded_solver_time"]*np.ceil(len(results_dict["rounded_results"])/options.num_simulated_cores)  # only take the max since rounding can be parallelized
+
+
 
     assert best_result.is_success()
     cost = best_result.get_optimal_cost()
