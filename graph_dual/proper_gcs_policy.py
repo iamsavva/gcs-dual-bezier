@@ -690,6 +690,8 @@ def plot_optimal(
     verbose_comparison_to_optimal:bool = False,
     terminal_state: npt.NDArray = None,
     optimal_name = "optimal",
+    dotted=False,
+    plot_start_target_only=False
 ) -> T.Tuple[bool, float]:
     """
     rollout the policy from the initial condition, plot it out on a given figure`
@@ -706,7 +708,8 @@ def plot_optimal(
         INFO("----")
 
     if plot_control_points:
-        plot_bezier(fig, optimal_path, optimal_color, optimal_color, name=optimal_name,linewidth=linewidth, marker_size=marker_size, plot_start_point=plot_start_point, dotted=False)
+        plot_bezier(fig, optimal_path, optimal_color, optimal_color, name=optimal_name,linewidth=linewidth, marker_size=marker_size, plot_start_point=plot_start_point, dotted=dotted, plot_start_target_only=plot_start_target_only)
     else:
-        plot_bezier(fig, optimal_path, optimal_color, None, name=optimal_name,linewidth=linewidth, marker_size=marker_size, plot_start_point=plot_start_point, dotted=False)
+        plot_bezier(fig, optimal_path, optimal_color, None, name=optimal_name,linewidth=linewidth, marker_size=marker_size, plot_start_point=plot_start_point, dotted=dotted, plot_start_target_only=plot_start_target_only)
     return True, optimal_dt
+

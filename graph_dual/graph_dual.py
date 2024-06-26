@@ -140,15 +140,14 @@ class DualVertex:
         self.x = prog.NewIndeterminates(self.state_dim, "x_" + self.name)
         self.vars = Variables(self.x)
         self.total_flow_in_violation = prog.NewContinuousVariables(1)[0]
-        # prog.AddLinearConstraint(self.total_flow_in_violation == 0)
-        # if self.name == "p0":
-        #     prog.AddLinearConstraint(self.total_flow_in_violation == 3)
-    
-        if not self.vertex_is_target:
-            prog.AddLinearConstraint(self.total_flow_in_violation >= 0)
-            prog.AddLinearCost(self.total_flow_in_violation * self.options.max_flow_through_edge)
-        else:
+        if self.options.dont_use_flow_violations:
             prog.AddLinearConstraint(self.total_flow_in_violation == 0)
+        else:
+            if not self.vertex_is_target:
+                prog.AddLinearConstraint(self.total_flow_in_violation >= 0)
+                prog.AddLinearCost(self.total_flow_in_violation * self.options.max_flow_through_edge)
+            else:
+                prog.AddLinearConstraint(self.total_flow_in_violation == 0)
 
     def define_set_inequalities(self):
         """
@@ -414,6 +413,8 @@ class PolynomialDualGCS:
         self.prog.AddLinearConstraint(
             bidirectional_edge_violation == 0
         )  
+        WARN("bidirectional edge violation set to 0")
+
         # self.prog.AddLinearConstraint(
         #     bidirectional_edge_violation >= 0
         # )  

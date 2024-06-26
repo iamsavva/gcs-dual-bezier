@@ -103,7 +103,8 @@ def plot_bezier(
     linewidth=3,
     marker_size = 3,
     plot_start_point = True,
-    dotted=True
+    dotted=True,
+    plot_start_target_only=False
 ):
     showlegend = False
     line_name = ""
@@ -113,6 +114,27 @@ def plot_bezier(
 
     full_path = None
     first = True
+
+    if plot_start_target_only:
+        fig.add_trace(
+            go.Scatter(
+                x=[bezier_curves[0][0][0], bezier_curves[-1][-1][0]],
+                y=[bezier_curves[0][0][1], bezier_curves[-1][-1][1]],
+                mode="markers",
+                marker=dict(
+                color='white',        # Set the fill color of the markers
+                size=marker_size,             # Set the size of the markers
+                line=dict(
+                    color=control_point_color,     # Set the outline color of the markers
+                    width=8          # Set the width of the marker outline
+                )
+            ),
+                showlegend=False,
+            )
+        )
+        return
+
+
     for curve_index, bezier_curve in enumerate(bezier_curves):
         X = np.array(bezier_curve)
         tt = np.linspace(0, 1, 100)

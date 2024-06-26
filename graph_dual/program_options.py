@@ -84,6 +84,9 @@ class ProgramOptions:
 
         self.backtracking_iteration_limit = 10000
 
+
+        self.dont_use_flow_violations = False
+
         # ----------------------------------
         # these should probably be depricated
         # ----------------------------------
