@@ -200,16 +200,18 @@ def arm_components_loader(use_rohan_scenario:bool = False,
     use_cheap = True -- load iiwa7 with box collision geometry
     use_cheap = False -- load iiwa14 with cylinder collision geometry
     """
-    if use_rohan_scenario:
-        if use_cheap:
-            arm_components = create_arm(arm_file_path="./models/iiwa14_rohan_cheap.dmd.yaml", use_meshcat=use_meshcat)
-        else:
-            arm_components = create_arm(arm_file_path="./models/iiwa14_rohan.dmd.yaml", use_meshcat=use_meshcat)
-    else:
-        if use_cheap:
-            arm_components = create_arm(arm_file_path="./models/iiwa14_david_cheap.dmd.yaml", use_meshcat=use_meshcat)
-        else:
-            arm_components = create_arm(arm_file_path="./models/iiwa14_david.dmd.yaml", use_meshcat=use_meshcat)
+    # if use_rohan_scenario:
+    #     if use_cheap:
+    #         arm_components = create_arm(arm_file_path="./models/iiwa14_rohan_cheap.dmd.yaml", use_meshcat=use_meshcat)
+    #     else:
+    #         arm_components = create_arm(arm_file_path="./models/iiwa14_rohan.dmd.yaml", use_meshcat=use_meshcat)
+    # else:
+    #     if use_cheap:
+    #         arm_components = create_arm(arm_file_path="./models/iiwa14_david_cheap.dmd.yaml", use_meshcat=use_meshcat)
+    #     else:
+    #         arm_components = create_arm(arm_file_path="./models/iiwa14_david.dmd.yaml", use_meshcat=use_meshcat)
+    arm_components = create_arm(arm_file_path="./models/iiwa14_david_cheap_bigger3.dmd.yaml", use_meshcat=use_meshcat)
+    
     return arm_components
 
 
