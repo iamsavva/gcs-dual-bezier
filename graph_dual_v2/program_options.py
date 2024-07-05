@@ -38,8 +38,8 @@ class ProgramOptions:
         # ----------------------------------
         # S procedure
         self.s_procedure_multiplier_degree_for_linear_inequalities = 0
-        self.s_procedure_use_quadratic_multilpiers = True
-        self.s_procedure_quadratic_multiply_left_and_right = True
+        self.s_procedure_take_product_of_linear_constraints = True
+        # self.s_procedure_multiply_groups = True
 
         # ---------------------------------------------
         # parameters specific to bezier curves
@@ -83,8 +83,6 @@ class ProgramOptions:
         self.policy_use_quadratic_cost = False
 
         self.backtracking_iteration_limit = 10000
-
-        self.dont_use_flow_violations = False
 
         self.allow_vertex_revisits = False
 

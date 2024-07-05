@@ -165,79 +165,157 @@ def make_potential(indet_list: npt.NDArray, pot_type:str, poly_deg:int, prog: Ma
 
 
 
-def define_sos_constraint_over_polyhedron_multivar(
+# def define_sos_constraint_over_polyhedron_multivar(
+#     prog: MathematicalProgram,
+#     list_of_vars: T.List[npt.NDArray],
+#     B_matrices: T.List[npt.NDArray],
+#     function: Expression,
+#     options: ProgramOptions,
+#     ellipsoid_matrices: T.List[npt.NDArray] = None,
+# ) -> None:
+    
+#     if ellipsoid_matrices is None:
+#         ellipsoid_matrices = [None]*len(list_of_vars)
+#     s_procedure = Expression(0)
+#     # deg 0
+#     lambda_0 = prog.NewContinuousVariables(1)[0]
+#     prog.AddLinearConstraint(lambda_0 >= 0)
+#     s_procedure += lambda_0
+
+#     all_variables = Variables(np.array(list_of_vars).flatten())
+
+#     # deg 1
+#     deg1 = options.s_procedure_multiplier_degree_for_linear_inequalities
+#     for i, vars_i in enumerate(list_of_vars):
+#         x_and_1 = np.hstack(([1], vars_i))
+#         B_i = B_matrices[i]
+#         if B_i is not None:
+#             deg_1_cons = B_i.dot(x_and_1)
+
+#             if deg1 == 0:
+#                 lambda_1 = prog.NewContinuousVariables(len(deg_1_cons))
+#                 prog.AddLinearConstraint(ge(lambda_1, 0))
+#             else:
+#                 lambda_1 = [
+#                     prog.NewSosPolynomial(all_variables, deg1)[0].ToExpression()
+#                     for _ in range(len(deg_1_cons))
+#                 ]
+#             s_procedure += deg_1_cons.dot(lambda_1)
+
+#             # deg 2
+#             if options.s_procedure_use_quadratic_multilpiers:
+#                 lambda_2 = prog.NewSymmetricContinuousVariables(len(deg_1_cons))
+#                 prog.AddLinearConstraint(ge(lambda_2, 0))
+#                 s_procedure += np.sum((B_i.dot(np.outer(x_and_1, x_and_1)).dot(B_i.T)) * lambda_2)
+                
+#                 if options.s_procedure_quadratic_multiply_left_and_right:
+#                     for j in range(i+1, len(list_of_vars)):
+#                         B_j = B_matrices[j]
+#                         if B_j is not None:
+#                             y_and_1 = np.hstack(([1], list_of_vars[j]))
+#                             lambda_2_left_right = prog.NewContinuousVariables(len(deg_1_cons), B_j.shape[0])
+#                             prog.AddLinearConstraint(ge(lambda_2_left_right, 0))
+#                             s_procedure += np.sum((B_i.dot(np.outer(x_and_1, y_and_1)).dot(B_j.T)) * lambda_2_left_right)
+
+#         E_i = ellipsoid_matrices[i]
+#         if E_i is not None:
+#             el_mat = ellipsoid_matrices[i]
+#             lambda_el = prog.NewContinuousVariables(1)[0]
+#             prog.AddLinearConstraint(lambda_el >= 0)
+#             s_procedure += lambda_el * np.sum( el_mat * (np.outer(x_and_1, x_and_1)) )
+            
+        
+#     expr = function - s_procedure
+#     prog.AddSosConstraint(expr)
+
+
+
+def define_sos_constraint_over_polyhedron_multivar_new(
     prog: MathematicalProgram,
-    list_of_vars: T.List[npt.NDArray],
-    B_matrices: T.List[npt.NDArray],
+    all_variables: Variables,
+    linear_inequalities: T.List[Expression],
+    quadratic_inequalities: T.List[Expression],
+    equality_constraints: T.List[Expression],
+    subsitution_dictionary: T.Dict[Variable, Expression],
     function: Expression,
     options: ProgramOptions,
-    ellipsoid_matrices: T.List[npt.NDArray] = None,
 ) -> None:
-    if ellipsoid_matrices is None:
-        ellipsoid_matrices = [None]*len(list_of_vars)
+    def make_multipliers(degree, dimension, psd):
+        if dimension == 0:
+            lambdas = prog.NewContinuousVariables(dimension)
+            if psd:
+                prog.AddLinearConstraint(ge(lambdas, 0))
+        else:
+            if psd:
+                lambdas = [
+                    prog.NewSosPolynomial(all_variables, degree)[0].ToExpression()
+                    for _ in range(dimension)
+                ]
+            else:
+                lambdas = [
+                    prog.NewFreePolynomial(all_variables, degree).ToExpression()
+                    for _ in range(dimension)
+                ]
+        return lambdas
+
     s_procedure = Expression(0)
+
     # deg 0
     lambda_0 = prog.NewContinuousVariables(1)[0]
     prog.AddLinearConstraint(lambda_0 >= 0)
     s_procedure += lambda_0
 
-    all_variables = Variables(np.array(list_of_vars).flatten())
-
     # deg 1
-    deg1 = options.s_procedure_multiplier_degree_for_linear_inequalities
-    for i, vars_i in enumerate(list_of_vars):
-        x_and_1 = np.hstack(([1], vars_i))
-        B_i = B_matrices[i]
-        if B_i is not None:
-            deg_1_cons = B_i.dot(x_and_1)
+    deg = options.s_procedure_multiplier_degree_for_linear_inequalities
+    lambda_1 = make_multipliers(deg, len(linear_inequalities), True)
+    s_procedure += linear_inequalities.dot(lambda_1)
 
-            if deg1 == 0:
-                lambda_1 = prog.NewContinuousVariables(len(deg_1_cons))
-                prog.AddLinearConstraint(ge(lambda_1, 0))
-            else:
-                lambda_1 = [
-                    prog.NewSosPolynomial(all_variables, deg1)[0].ToExpression()
-                    for _ in range(len(deg_1_cons))
-                ]
-            s_procedure += deg_1_cons.dot(lambda_1)
+    # deg 1 products
+    if options.s_procedure_take_product_of_linear_constraints:
+        for i in range(len(linear_inequalities)-1):
+            lambda_1_prod = make_multipliers(deg, len(linear_inequalities) - (i+1), True)
+            s_procedure += linear_inequalities[i+1:].dot(lambda_1_prod) * linear_inequalities[i]
 
-            # deg 2
-            if options.s_procedure_use_quadratic_multilpiers:
-                lambda_2 = prog.NewSymmetricContinuousVariables(len(deg_1_cons))
-                prog.AddLinearConstraint(ge(lambda_2, 0))
-                s_procedure += np.sum((B_i.dot(np.outer(x_and_1, x_and_1)).dot(B_i.T)) * lambda_2)
-                
-                if options.s_procedure_quadratic_multiply_left_and_right:
-                    for j in range(i+1, len(list_of_vars)):
-                        B_j = B_matrices[j]
-                        if B_j is not None:
-                            y_and_1 = np.hstack(([1], list_of_vars[j]))
-                            lambda_2_left_right = prog.NewContinuousVariables(len(deg_1_cons), B_j.shape[0])
-                            prog.AddLinearConstraint(ge(lambda_2_left_right, 0))
-                            s_procedure += np.sum((B_i.dot(np.outer(x_and_1, y_and_1)).dot(B_j.T)) * lambda_2_left_right)
+    # deg 2
+    lambda_2 = make_multipliers(deg, len(quadratic_inequalities), True)
+    s_procedure += quadratic_inequalities.dot(lambda_2)
 
-        E_i = ellipsoid_matrices[i]
-        if E_i is not None:
-            el_mat = ellipsoid_matrices[i]
-            lambda_el = prog.NewContinuousVariables(1)[0]
-            prog.AddLinearConstraint(lambda_el >= 0)
-            s_procedure += lambda_el * np.sum( el_mat * (np.outer(x_and_1, x_and_1)) )
-            
+    # equality constraints
+    lambda_eq = make_multipliers(deg, len(equality_constraints), False)
+    s_procedure += equality_constraints.dot(lambda_eq)
         
-    expr = function - s_procedure
+    expr = function - s_procedure # type: Expression
+
+    # substitions
+    expr = expr.Substitute(subsitution_dictionary)
+
     prog.AddSosConstraint(expr)
 
 
+def get_set_membership_inequalities(x:npt.NDArray, convex_set:ConvexSet):
+    linear_inequalities = []
+    quadratic_inequalities = []
+    x_and_1 = np.hstack(([1], x))
 
-## storign and extracting lists into yaml files
-import yaml
-def store_it(num, trajectory):
-    # Store the list into a YAML file
-    with open("a_few_trajectories/traj" + str(num) + ".yaml", "w") as yaml_file:
-        yaml.dump(trajectory, yaml_file)
+    if isinstance(convex_set, Hyperrectangle) or isinstance(convex_set, HPolyhedron):
+        if isinstance(convex_set, Hyperrectangle):
+            hpoly = convex_set.MakeHPolyhedron()
+        else:
+            hpoly = convex_set
+        # inequalities of the form b[i] - a.T x = g_i(x) >= 0
+        A, b = hpoly.A(), hpoly.b()
+        B = np.hstack((b.reshape((len(b), 1)), -A))
+        linear_inequalities = B.dot(x_and_1)
 
-def extract(file_name:str):
-    # Extract the list back from the YAML file
-    with open(file_name, "r") as yaml_file:
-        extracted_list = yaml.load(yaml_file, Loader=yaml.FullLoader)
-    return extracted_list
+    elif isinstance(convex_set, Hyperellipsoid):
+        mu = convex_set.center()
+        A = convex_set.A()
+        c11 = 1 - mu.T.dot(A.T).dot(A).dot(mu)
+        c12 = mu.T.dot(A.T).dot(A)
+        c21 = A.T.dot(A).dot(mu).reshape((len(mu), 1))
+        c22 = -A.T.dot(A)
+        E = np.vstack((np.hstack((c11,c12)), np.hstack((c21,c22))))
+        quadratic_inequalities = [np.sum( E * (np.outer(x_and_1, x_and_1)) )]
+
+    return linear_inequalities, quadratic_inequalities
+
