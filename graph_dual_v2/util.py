@@ -23,7 +23,8 @@ from pydrake.geometry.optimization import ( # pylint: disable=import-error, no-n
     Hyperrectangle,
     ConvexSet,
     Point,
-)  
+)
+
 from pydrake.symbolic import ( # pylint: disable=import-error, no-name-in-module, unused-import
     Polynomial,
     Variable,
@@ -212,28 +213,6 @@ def get_kth_control_point(bezier:npt.NDArray, k:int, num_control_points:int) -> 
     state_dim = len(bezier)//num_control_points
     return bezier[ k*state_dim:(k+1)*state_dim ]
 
-def make_moment_matrix(m0, m1:npt.NDArray, m2:npt.NDArray):
-    assert m2.shape == (len(m1), len(m1))
-    assert m1.shape == (len(m1),)
-    return np.vstack((np.hstack((m0, m1)), np.hstack( (m1.reshape((len(m1),1)), m2) )))
-
-# def project_to_set
-
-def extract_moments_from_vector_of_spectrahedron_prog_variables(vector:npt.NDArray, dim:int)-> T.Tuple[float, npt.NDArray, npt.NDArray]:
-    # spectrahedron program variables stores vectors in the following array: m1, m2[triu], m0
-    # indecis
-    ind1 = dim
-    ind2 = ind1 + int(dim*(dim+1)/2)
-    # get moments
-    m1 = vector[:ind1]
-    m2 = np.zeros((dim, dim), dtype=vector.dtype)
-    triu_ind = np.triu_indices(dim)
-    m2[triu_ind[0], triu_ind[1]] = vector[ind1: ind2]
-    m2[triu_ind[1], triu_ind[0]] = vector[ind1: ind2]
-    m0 = vector[ind2]
-    return m0, m1, m2
-
-
 def add_set_membership(prog:MathematicalProgram, convex_set:ConvexSet, x:npt.NDArray, ellipsoid_as_lorentz=True):
     if isinstance(convex_set, HPolyhedron):
         prog.AddLinearConstraint(le( convex_set.A().dot(x), convex_set.b()))
@@ -252,3 +231,4 @@ def add_set_membership(prog:MathematicalProgram, convex_set:ConvexSet, x:npt.NDA
         prog.AddLinearConstraint(eq(x, convex_set.x()))
     else:
         assert False, "bad set in add_set_membership"
+

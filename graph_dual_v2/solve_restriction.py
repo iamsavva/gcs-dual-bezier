@@ -58,17 +58,16 @@ from util import (
     YAY,
     WARN,
     ERROR,
-    ChebyshevCenter,
-    get_kth_control_point
+    # ChebyshevCenter,
+    # get_kth_control_point
 )  # pylint: disable=import-error, no-name-in-module, unused-import
 
 from gcs_util import get_edge_name, make_quadratic_cost_function_matrices, plot_a_gcs
 
-from graph_dual import PolynomialDualGCS, DualEdge, DualVertex
-from graph_dual_goal_conditioned import GoalConditionedDualEdge, GoalConditionedDualVertex, GoalConditionedPolynomialDualGCS
-from plot_utils import plot_bezier
+from gcs_dual import PolynomialDualGCS, DualEdge, DualVertex
+# from plot_utils import plot_bezier
 
-
+from util import add_set_membership
 
 # ---------------------------------------------------------------------
 # ---------------------------------------------------------------------
@@ -77,49 +76,30 @@ from plot_utils import plot_bezier
 def get_path_cost(
     graph: PolynomialDualGCS,
     vertex_path: T.List[DualVertex],
-    bezier_path: T.List[T.List[npt.NDArray]],
-    add_edge_and_vertex_violations:bool = True,
-    add_terminal_heuristic:bool = True,
-    terminal_state:npt.NDArray = None
+    vertex_trajectory: T.List[T.List[npt.NDArray]], # TODO: here -- have vertex / edge variables?
+    use_surrogate: bool,
+    add_target_heuristic:bool = True,
+    target_state:npt.NDArray = None
 ) -> float:
     """
-    Note: this is cost of the full path with the terminal cost
-    TODO: should i do the add G term heiuristic?
+    Note: this is cost of the full path with the target cost
     """
+    if target_state is None:
+        assert isinstance(graph.target_convex_set, Point), "target set not passed when target set not a point"
+        target_state = graph.target_convex_set.x()
+
     cost = 0.0
-    for index, bezier_curve in enumerate(bezier_path):
+    for index, x_v in enumerate(vertex_trajectory):
         edge = graph.edges[get_edge_name(vertex_path[index].name, vertex_path[index + 1].name)]
-        for i in range(len(bezier_curve) - 1):
-            if graph.options.policy_use_l2_norm_cost:
-                # use l2 norm
-                cost += np.linalg.norm(bezier_curve[i]-bezier_curve[i + 1])
-            elif graph.options.policy_use_quadratic_cost:
-                delta = bezier_curve[i]-bezier_curve[i + 1]
-                cost += np.linalg.norm(delta.dot(delta))
-            else:
-                # use regular cost instead
-                if terminal_state is not None:
-                    cost += edge.cost_function(bezier_curve[i], bezier_curve[i + 1], terminal_state)
-                else:
-                    cost += edge.cost_function(bezier_curve[i], bezier_curve[i + 1])
+        x_v_1 = vertex_trajectory[index+1]
+        if use_surrogate:
+            cost += edge.cost_function_surrogate(x_v, None, x_v_1, target_state)
+        else:
+            cost += edge.cost_function(x_v, None, x_v_1, target_state)
 
-        if add_edge_and_vertex_violations:
-            violations = graph.value_function_solution.GetSolution(edge.bidirectional_edge_violation) + graph.value_function_solution.GetSolution(edge.right.total_flow_in_violation)
-            if isinstance(violations, Expression):
-                violations = violations.Evaluate()
-            cost += violations
-
-        if add_terminal_heuristic and (index == len(bezier_path) - 1):
-            if terminal_state is not None:
-                assert isinstance(graph, GoalConditionedPolynomialDualGCS), "passed terminal state but not a Goal Conditioned policy"
-                cost_to_go_at_last_point = vertex_path[-1].cost_at_point(bezier_curve[-1], terminal_state, graph.value_function_solution)
-                if vertex_path[-1].vertex_is_target:
-                    assert np.allclose(bezier_curve[-1], terminal_state), "last vertex in curve is terminal, but last point in curve is not a terminal point"
-                    assert np.allclose(cost_to_go_at_last_point, 0.0), "cost-to-go should be 0"
-                else:
-                    cost += cost_to_go_at_last_point
-            else:
-                cost += vertex_path[-1].cost_at_point(bezier_curve[-1], graph.value_function_solution)
+    if add_target_heuristic:
+        cost_to_go_at_last_point = vertex_path[-1].get_cost_to_go_at_point(vertex_trajectory[-1], target_state, True)
+        cost += cost_to_go_at_last_point
     return cost
 
 
@@ -129,11 +109,10 @@ def solve_parallelized_convex_restriction(
     state_now: npt.NDArray,
     options: ProgramOptions = None,
     verbose_failure=True,
-    terminal_state:npt.NDArray = None,
+    target_state:npt.NDArray = None,
     one_last_solve:bool = False,
     verbose_solve_success = True
-) -> T.List[T.Tuple[T.List[DualVertex], T.List[T.List[npt.NDArray]]]]:
-
+) -> T.List[T.Tuple[T.List[DualVertex], T.List[npt.NDArray]]]:
     """
     solve a convex restriction over a vertex path
     return cost of the vertex_path
@@ -143,110 +122,109 @@ def solve_parallelized_convex_restriction(
     
     if options is None:
         options = graph.options
+    if target_state is None:
+        assert isinstance(graph.target_convex_set, Point), "target set not passed when target set not a point"
+        target_state = graph.target_convex_set.x()
 
     # construct an optimization problem
     prog = MathematicalProgram()
-    all_bezier_curves = []
+    vertex_trajectories = []
     timer = timeit()
 
-    def add_ge_lin_con(B:npt.NDArray, x:npt.NDArray):
-        prog.AddLinearConstraint(-B[:, 1:], 
-                                 -np.infty*np.ones( B.shape[0]),
-                                 B[:, 0],
-                                 x)
-
     for vertex_path in vertex_paths:
-
-        # initial state
-        last_x = None
-
         # previous direction of motion -- for bezier curve continuity
-        bezier_curves = []
+        vertex_trajectory = []
 
         # for every vertex:
         for i, vertex in enumerate(vertex_path):
             x = prog.NewContinuousVariables(vertex_path[0].state_dim)
-            if vertex.B is not None:
-                # add_ge_lin_con(vertex.B, x)
-                hpoly = vertex.get_hpoly()
-                prog.AddLinearConstraint(le(hpoly.A().dot(x), hpoly.b()))
-            if vertex.E is not None:
-                # TODO: fix me for solve times
-                # x_and_1 = np.hstack(([1], x))
-                # prog.AddConstraint( np.sum(vertex.E*np.outer(x_and_1, x_and_1))>= 0, )
-                lhs = (vertex.convex_set.A().dot(x) - vertex.convex_set.A().dot(vertex.convex_set.center()))
-                rhs = [1]
-                prog.AddLorentzConeConstraint(np.hstack((rhs, lhs)))
-
-                # prog.AddQuadraticConstraint( np.sum(vertex.E*np.outer(x_and_1, x_and_1)), 0, np.inf)
+            vertex_trajectory.append(x)
+            add_set_membership(prog, vertex.convex_set, x, True)
 
             if i == 0:
                 prog.AddLinearConstraint( eq(x, state_now))
             else:
-                bezier_curve = [last_x, x]
-                bezier_curves.append(bezier_curve)
                 edge = graph.edges[get_edge_name(vertex_path[i - 1].name, vertex.name)]
+                cost = edge.cost_function(vertex_trajectory[i-1], None, x, target_state)
+                prog.AddCost(cost)
 
-                # add the cost
-                if graph.options.policy_use_l2_norm_cost:
-                    add_l2_norm(prog, last_x, x)
-                elif graph.options.policy_use_quadratic_cost:
-                    add_quadratic_cost(prog, last_x, x)
-                else:
-                    if terminal_state is not None:
-                        prog.AddQuadraticCost(edge.cost_function(last_x, x, terminal_state))
-                    else:
-                        prog.AddQuadraticCost(edge.cost_function(last_x, x))
+                for evaluator in edge.linear_inequality_evaluators:
+                    prog.AddLinearConstraint(evaluator(vertex_trajectory[i-1], None, x, target_state))
+                for evaluator in edge.quadratic_inequality_evaluators:
+                    prog.AddConstraint(evaluator(vertex_trajectory[i-1], None, x, target_state))
+                for evaluator in edge.equality_evaluators:
+                    prog.AddLinearConstraint(evaluator(vertex_trajectory[i-1], None, x, target_state))
 
             if i == len(vertex_path) - 1:  
-                # if using terminal heuristic cost:
+                # if using target heuristic cost:
                 if not options.policy_use_zero_heuristic:
-                    if terminal_state is not None:
+                    if target_state is not None:
                         # goal conditioned case
-                        potential = graph.value_function_solution.GetSolution(vertex.potential)
-                        assert isinstance(vertex, GoalConditionedDualVertex)
-                        if vertex.vertex_is_target:
-                            # if a terminal vertex -- just add terminal constraint
-                            prog.AddLinearConstraint( eq(x, terminal_state)) 
+                        if vertex.vertex_is_target and vertex.use_target_constraint:
+                            # if a target vertex -- just add target constraint
+                            prog.AddLinearConstraint( eq(x, target_state)) 
                         else:
-                            # if not the terminal vertex -- plug in for the potential
-                            # TODO: reimplement to speed up
-                            def f_potential(x):
-                                sub_x = potential.Substitute(
-                                    {vertex.x[i]: x[i] for i in range(vertex.state_dim)}
-                                )
-                                sub_xt = sub_x.Substitute(
-                                    {vertex.xt[i]: terminal_state[i] for i in range(vertex.state_dim)}
-                                )
-                                return sub_xt
-                            prog.AddQuadraticCost(f_potential(x))
-                    else:
-                        potential = graph.value_function_solution.GetSolution(vertex.potential)
-                        f_potential = lambda x: potential.Substitute(
-                            {vertex.x[i]: x[i] for i in range(vertex.state_dim)}
-                        )
-                        prog.AddQuadraticCost(f_potential(x))
+                            cost = vertex.get_cost_to_go_at_point(x, target_state)
+                            prog.AddCost(cost)
 
-            last_x = x
-
-        all_bezier_curves.append(bezier_curves)
+        vertex_trajectories.append(vertex_trajectory)
 
     timer.dt("just building", print_stuff=options.verbose_solve_times)
     
-    # TODO: kinda nasty. how about instead i pass a solver constructor
     if options.policy_solver is None:
         solution = Solve(prog)
     else:
-        solution = options.policy_solver().Solve(prog)
+        if options.policy_solver == MosekSolver:
+            mosek_solver = MosekSolver()
+            solver_options = SolverOptions()
+            # set the solver tolerance gaps
+            if not one_last_solve:
+                solver_options.SetOption(
+                    MosekSolver.id(),
+                    "MSK_DPAR_INTPNT_CO_TOL_REL_GAP",
+                    options.policy_MSK_DPAR_INTPNT_CO_TOL_REL_GAP,
+                )
+                solver_options.SetOption(
+                    MosekSolver.id(),
+                    "MSK_DPAR_INTPNT_CO_TOL_PFEAS",
+                    options.policy_MSK_DPAR_INTPNT_CO_TOL_PFEAS,
+                )
+                solver_options.SetOption(
+                    MosekSolver.id(),
+                    "MSK_DPAR_INTPNT_CO_TOL_DFEAS",
+                    options.policy_MSK_DPAR_INTPNT_CO_TOL_DFEAS,
+                )
+                solver_options.SetOption(
+                    MosekSolver.id(),
+                    "MSK_DPAR_INTPNT_TOL_INFEAS",
+                    options.MSK_DPAR_INTPNT_TOL_INFEAS,
+                )
+
+            solver_options.SetOption(MosekSolver.id(), 
+                                    "MSK_IPAR_PRESOLVE_USE", 
+                                    options.MSK_IPAR_PRESOLVE_USE)
+            
+            solver_options.SetOption(MosekSolver.id(), 
+                                        "MSK_IPAR_INTPNT_SOLVE_FORM", 
+                                        options.MSK_IPAR_INTPNT_SOLVE_FORM)
+                
+            if options.policy_use_robust_mosek_params:
+                solver_options.SetOption(MosekSolver.id(), "MSK_DPAR_INTPNT_CO_TOL_REL_GAP", 1e-3)
+                solver_options.SetOption(MosekSolver.id(), "MSK_IPAR_INTPNT_SOLVE_FORM", 1)
+
+            # solve the program
+            solution = mosek_solver.Solve(prog, solver_options=solver_options)
+        else:
+            solution = options.policy_solver().Solve(prog)
 
     timer.dt("just solving", print_stuff=options.verbose_solve_times)
 
     final_result = []
     if solution.is_success():
         for i, v_path in enumerate(vertex_paths):
-            bezier_curves = all_bezier_curves[i]
-            bezier_solutions = [[solution.GetSolution(control_point) for control_point in bezier_curve] for bezier_curve in bezier_curves]
-            full_tuple = (v_path, bezier_solutions)
+            vertex_trajectory = vertex_trajectories[i]
+            trajectory_solution = [solution.GetSolution(x) for x in vertex_trajectory]
+            full_tuple = (v_path, trajectory_solution)
             final_result.append(full_tuple)
         return final_result
     else:
@@ -262,10 +240,10 @@ def solve_convex_restriction(
     state_now: npt.NDArray,
     options: ProgramOptions = None,
     verbose_failure:bool =False,
-    terminal_state:npt.NDArray = None,
+    target_state:npt.NDArray = None,
     one_last_solve = False
 ) -> T.List[T.List[npt.NDArray]]:
-    result = solve_parallelized_convex_restriction(graph, [vertex_path], state_now, options, verbose_failure, terminal_state, one_last_solve, verbose_solve_success = False)
+    result = solve_parallelized_convex_restriction(graph, [vertex_path], state_now, options, verbose_failure, target_state, one_last_solve, verbose_solve_success = False)
     if result is None:
         return None
     else:
@@ -274,38 +252,24 @@ def solve_convex_restriction(
 
 # ---
 
-def add_l2_norm(prog: MathematicalProgram, x:npt.NDArray, y:npt.NDArray):
-    n = len(x)
-    A = np.hstack( (np.eye(n), -np.eye(n)) )
-    b = np.zeros(n)
-    prog.AddL2NormCostUsingConicConstraint(A, b, np.append(x,y))
-
-def add_quadratic_cost(prog: MathematicalProgram, x:npt.NDArray, y:npt.NDArray):
-    n = len(x)
-    Q = 2 * np.vstack((np.hstack( (np.eye(n), -np.eye(n)) ), np.hstack( (-np.eye(n), np.eye(n)) ) ))
-    b = np.zeros(2*n)
-    c = 0
-    prog.AddQuadraticCost(Q, b, c, np.append(x,y), True)
-
-
-
 def get_optimal_path(
     graph: PolynomialDualGCS,
     vertex: DualVertex,
     state: npt.NDArray,
     options: ProgramOptions = None,
-    terminal_state:npt.NDArray = None
+    target_state:npt.NDArray = None
 ) -> T.Tuple[float, float, T.List[T.List[npt.NDArray]], T.List[DualVertex]]:
     """
     return (time, cost, bezier path, vertex path) of the optimal solution.
     """
+    raise NotImplementedError("needs a rewrite for walks / paths / new constraints")
     if options is None:
         options = graph.options
 
-    if terminal_state is not None:
-        gcs, vertices, pseudo_terminal_vertex = graph.export_a_gcs(terminal_state)
+    if target_state is not None:
+        gcs, vertices, pseudo_target_vertex = graph.export_a_gcs(target_state)
     else:
-        gcs, vertices, pseudo_terminal_vertex = graph.export_a_gcs()
+        gcs, vertices, pseudo_target_vertex = graph.export_a_gcs()
     
     # set initial vertex constraint
     start_vertex = vertices[vertex.name]
@@ -314,15 +278,15 @@ def get_optimal_path(
     for con in cons:
         start_vertex.AddConstraint( con )
 
-    # set terminal vertex constraint:
-    if terminal_state is not None:
-        assert isinstance(graph, GoalConditionedPolynomialDualGCS), "passed terminal state but not a Goal Conditioned policy"
-        terminal_vertex = vertices[graph.terminal_vertex.name]
-        last_point = terminal_vertex.x()
-        assert len(last_point) == graph.terminal_vertex.state_dim
-        cons = eq(last_point, terminal_state)
+    # set target vertex constraint:
+    if target_state is not None:
+        assert isinstance(graph, GoalConditionedPolynomialDualGCS), "passed target state but not a Goal Conditioned policy"
+        target_vertex = vertices[graph.target_vertex.name]
+        last_point = target_vertex.x()
+        assert len(last_point) == graph.target_vertex.state_dim
+        cons = eq(last_point, target_state)
         for con in cons:
-            terminal_vertex.AddConstraint( con )
+            target_vertex.AddConstraint( con )
 
     gcs_options = GraphOfConvexSetsOptions()
     gcs_options.convex_relaxation = options.gcs_policy_use_convex_relaxation
@@ -335,7 +299,7 @@ def get_optimal_path(
     # solve
     timer = timeit()
     result = gcs.SolveShortestPath(
-        start_vertex, pseudo_terminal_vertex, gcs_options
+        start_vertex, pseudo_target_vertex, gcs_options
     )  # type: MathematicalProgramResult
     dt = timer.dt("just SolveShortestPath solve time", print_stuff=options.verbose_solve_times)
 
@@ -344,7 +308,7 @@ def get_optimal_path(
     if options.verbose_solve_times:
         diditwork(result)
 
-    edge_path = gcs.GetSolutionPath(start_vertex, pseudo_terminal_vertex, result)
+    edge_path = gcs.GetSolutionPath(start_vertex, pseudo_target_vertex, result)
     vertex_name_path = []
     value_path = []
     for e in edge_path[:-1]:
@@ -352,8 +316,8 @@ def get_optimal_path(
         full_curve = [result.GetSolution(e.u().x()), result.GetSolution(e.v().x())]
         value_path.append(full_curve)
     vertex_name_path.append(edge_path[-1].u().name())
-    if terminal_state is not None:
-        assert np.allclose(value_path[-1][-1], terminal_state), "terminal state isn't 0, why?"
+    if target_state is not None:
+        assert np.allclose(value_path[-1][-1], target_state), "target state isn't 0, why?"
         
     return dt, cost, value_path, [graph.vertices[name] for name in vertex_name_path]
 

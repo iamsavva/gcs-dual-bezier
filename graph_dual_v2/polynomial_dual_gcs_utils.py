@@ -21,6 +21,7 @@ from pydrake.geometry.optimization import (  # pylint: disable=import-error, no-
     Point,
     ConvexSet,
     Hyperrectangle,
+    Hyperellipsoid,
 )
 import numbers
 import pydot
@@ -52,8 +53,9 @@ from util import (
     WARN,
     ERROR,
     ChebyshevCenter,
-    make_moment_matrix,
 )  # pylint: disable=import-error, no-name-in-module, unused-import
+
+from util_moments import make_moment_matrix
 
 
 def get_product_constraints(constraints: T.List[Expression]) -> T.List[Expression]:

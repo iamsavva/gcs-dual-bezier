@@ -20,7 +20,7 @@ from graph_dual import (
     QUADRATIC_COST_AUGMENTED,
 )
 
-from graph_dual_goal_conditioned import (
+from gcs_dual import (
     GoalConditionedPolynomialDualGCS, QUADRATIC_COST_AUGMENTED_GC, QUADRATIC_COST_GC
 )
 from program_options import FREE_POLY, PSD_POLY, CONVEX_POLY, ProgramOptions

@@ -23,16 +23,14 @@ class ProgramOptions:
         # potential type
         self.potential_poly_deg = 2
         self.pot_type = FREE_POLY
-
-        self.max_flow_through_edge = 1
         self.policy_lookahead = 1
 
         # ----------------------------------
         # MOSEK solver related
-        self.use_robust_mosek_parameters = True
-        self.MSK_DPAR_INTPNT_CO_TOL_REL_GAP = 1e-8
-        self.MSK_DPAR_INTPNT_CO_TOL_PFEAS = 1e-8
-        self.MSK_DPAR_INTPNT_CO_TOL_DFEAS = 1e-8
+        self.value_synthesis_use_robust_mosek_parameters = True
+        self.value_synthesis_MSK_DPAR_INTPNT_CO_TOL_REL_GAP = 1e-8
+        self.value_synthesis_MSK_DPAR_INTPNT_CO_TOL_PFEAS = 1e-8
+        self.value_synthesis_MSK_DPAR_INTPNT_CO_TOL_DFEAS = 1e-8
 
 
         # ----------------------------------
@@ -58,10 +56,13 @@ class ProgramOptions:
         # solver selection for the lookaheads in the policy
         self.policy_solver = None
         self.gcs_policy_solver = None
-        self.policy_use_robust_mosek_params = False
+        self.policy_use_robust_mosek_params = False # should be false, else takes too long
         self.policy_MSK_DPAR_INTPNT_CO_TOL_REL_GAP = 1e-6
         self.policy_MSK_DPAR_INTPNT_CO_TOL_PFEAS = 1e-6
         self.policy_MSK_DPAR_INTPNT_CO_TOL_DFEAS = 1e-6
+        self.MSK_DPAR_INTPNT_TOL_INFEAS = 1e-6
+        self.MSK_IPAR_PRESOLVE_USE = 1 # 0: use, 1: don't
+        self.MSK_IPAR_INTPNT_SOLVE_FORM = 2 # 0: pick, 1: primal, 2: dual
 
         self.policy_verbose_choices = False
         self.policy_verbose_number_of_restrictions_solves = False
@@ -78,9 +79,6 @@ class ProgramOptions:
         self.verbose_solve_times = False
 
         self.flow_violation_polynomial_degree = 0
-
-        self.policy_use_l2_norm_cost = False
-        self.policy_use_quadratic_cost = False
 
         self.backtracking_iteration_limit = 10000
 
