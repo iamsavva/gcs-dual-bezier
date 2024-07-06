@@ -243,7 +243,7 @@ def define_sos_constraint_over_polyhedron_multivar_new(
     options: ProgramOptions,
 ) -> None:
     def make_multipliers(degree, dimension, psd):
-        if dimension == 0:
+        if degree == 0:
             lambdas = prog.NewContinuousVariables(dimension)
             if psd:
                 prog.AddLinearConstraint(ge(lambdas, 0))
@@ -260,6 +260,10 @@ def define_sos_constraint_over_polyhedron_multivar_new(
                 ]
         return lambdas
 
+    linear_inequalities = np.hstack(linear_inequalities) if len(linear_inequalities) > 0 else np.array(linear_inequalities)
+    quadratic_inequalities = np.hstack(quadratic_inequalities) if len(quadratic_inequalities) > 0 else np.array(quadratic_inequalities)
+    equality_constraints = np.hstack(equality_constraints) if len(equality_constraints) > 0 else np.array(equality_constraints)
+
     s_procedure = Expression(0)
 
     # deg 0
@@ -269,22 +273,25 @@ def define_sos_constraint_over_polyhedron_multivar_new(
 
     # deg 1
     deg = options.s_procedure_multiplier_degree_for_linear_inequalities
-    lambda_1 = make_multipliers(deg, len(linear_inequalities), True)
-    s_procedure += linear_inequalities.dot(lambda_1)
 
-    # deg 1 products
-    if options.s_procedure_take_product_of_linear_constraints:
-        for i in range(len(linear_inequalities)-1):
-            lambda_1_prod = make_multipliers(deg, len(linear_inequalities) - (i+1), True)
-            s_procedure += linear_inequalities[i+1:].dot(lambda_1_prod) * linear_inequalities[i]
+    if len(linear_inequalities) > 0:
+        lambda_1 = make_multipliers(deg, len(linear_inequalities), True)
+        s_procedure += linear_inequalities.dot(lambda_1)
+        # deg 1 products
+        if options.s_procedure_take_product_of_linear_constraints:
+            for i in range(len(linear_inequalities)-1):
+                lambda_1_prod = make_multipliers(deg, len(linear_inequalities) - (i+1), True)
+                s_procedure += linear_inequalities[i+1:].dot(lambda_1_prod) * linear_inequalities[i]
 
     # deg 2
-    lambda_2 = make_multipliers(deg, len(quadratic_inequalities), True)
-    s_procedure += quadratic_inequalities.dot(lambda_2)
+    if len(quadratic_inequalities) > 0:
+        lambda_2 = make_multipliers(deg, len(quadratic_inequalities), True)
+        s_procedure += quadratic_inequalities.dot(lambda_2)
 
     # equality constraints
-    lambda_eq = make_multipliers(deg, len(equality_constraints), False)
-    s_procedure += equality_constraints.dot(lambda_eq)
+    if len(equality_constraints) > 0:
+        lambda_eq = make_multipliers(deg, len(equality_constraints), False)
+        s_procedure += equality_constraints.dot(lambda_eq)
         
     expr = function - s_procedure # type: Expression
 

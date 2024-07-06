@@ -270,6 +270,8 @@ def lookahead_policy(
     full_path = []  # type: T.List[T.List[npt.NDarray]]
     vertex_path_so_far = [vertex_now]  # type: T.List[DualVertex]
 
+    num_iterations = 0
+
     while not vertex_now.vertex_is_target:
         # use a k-step lookahead to obtain optimal k-step lookahead path
         _, bezier_path, vertex_path = get_k_step_optimal_path(
@@ -293,6 +295,10 @@ def lookahead_policy(
         )
         state_now = vertex_now.convex_set.Projection(state_now)[1].flatten()
         vertex_path_so_far.append(vertex_now)
+        num_iterations += 1
+        if num_iterations > options.forward_iteration_limit:
+            WARN("exceeded number of fowrard iterations")
+            return full_path, vertex_path_so_far
 
     full_path = postprocess_the_path(graph, vertex_path_so_far, full_path, initial_state, options, target_state)
 
@@ -332,7 +338,6 @@ def lookahead_with_backtracking_policy(
     target_node = None
     number_of_iterations = 0
 
-
     while not found_target:
         if decision_index == -1:
             return None, None
@@ -362,8 +367,8 @@ def lookahead_with_backtracking_policy(
 
             # for every path -- solve convex restriction, add next states
             number_of_iterations += 1
-            if number_of_iterations >= options.backtracking_iteration_limit:
-                WARN("backtracking ran out of iterations")
+            if number_of_iterations >= options.forward_iteration_limit:
+                WARN("exceeded number of forward iterations")
                 decision_index = -1
                 return None, None
             

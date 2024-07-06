@@ -80,9 +80,11 @@ class ProgramOptions:
 
         self.flow_violation_polynomial_degree = 0
 
-        self.backtracking_iteration_limit = 10000
+        # self.backtracking_iteration_limit = 10000
+        self.forward_iteration_limit = 10000
 
         self.allow_vertex_revisits = False
+        
 
         # ----------------------------------
         # these should probably be depricated

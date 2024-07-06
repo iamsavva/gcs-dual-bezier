@@ -32,7 +32,7 @@ from pydrake.math import ( # pylint: disable=import-error, no-name-in-module, un
 
 from pydrake.all import MakeSemidefiniteRelaxation # pylint: disable=import-error, no-name-in-module
 
-from util import add_set_membership
+from util import add_set_membership, latex, diditwork
 
 def make_moment_matrix(m0, m1:npt.NDArray, m2:npt.NDArray):
     assert m2.shape == (len(m1), len(m1))
@@ -69,6 +69,7 @@ def get_moment_matrix_for_a_measure_over_set(convex_set: ConvexSet):
         assert False, "bad set in get_moment_matrix_for_a_measure_over_set"
     mu = ellipsoid.center()
     sigma = np.linalg.inv(ellipsoid.A().T.dot(ellipsoid.A()))
+    print(np.linalg.eigvals(sigma))
     return make_moment_matrix(1, mu, sigma + np.outer(mu,mu))
     
 def make_product_of_indepent_moment_matrices(moment_mat1:npt.NDArray, moment_mat2:npt.NDArray):
@@ -92,5 +93,36 @@ def verify_necessary_conditions_for_moments_supported_on_set(moment_matrix:npt.N
     m0,m1,m2 = extract_moments_from_vector_of_spectrahedron_prog_variables(sdp_prog.decision_variables(), state_dim)
     M = make_moment_matrix(m0,m1,m2)
     sdp_prog.AddLinearConstraint(eq(M, moment_matrix))
-    solution = Solve(sdp_prog)
+
+    solver = MosekSolver()
+    solver_options = SolverOptions()
+
+    solver_options.SetOption(
+        MosekSolver.id(),
+        "MSK_DPAR_INTPNT_CO_TOL_REL_GAP",
+        1e-6,
+    )
+    solver_options.SetOption(
+        MosekSolver.id(),
+        "MSK_DPAR_INTPNT_CO_TOL_PFEAS",
+        1e-6,
+    )
+    solver_options.SetOption(
+        MosekSolver.id(),
+        "MSK_DPAR_INTPNT_CO_TOL_DFEAS",
+        1e-6,
+    )
+    solver_options.SetOption(
+        MosekSolver.id(),
+        "MSK_DPAR_INTPNT_TOL_INFEAS",
+        1e-6,
+    )
+
+    solver_options.SetOption(MosekSolver.id(), "MSK_DPAR_INTPNT_CO_TOL_REL_GAP", 1e-3)
+    solver_options.SetOption(MosekSolver.id(), "MSK_IPAR_INTPNT_SOLVE_FORM", 1)
+
+    solution = solver.Solve(sdp_prog, solver_options=solver_options)
+    # print(moment_matrix)
+    # latex(sdp_prog)
+    # diditwork(solution)
     return solution.is_success()

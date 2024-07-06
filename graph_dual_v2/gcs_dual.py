@@ -196,7 +196,7 @@ class DualVertex:
                 self.use_target_constraint = True
         else:
             self.use_target_constraint = None
-            if self.target_convex_set is Point:
+            if self.target_set_type is Point:
                 _, J_mat_vars = make_potential(self.x, self.options.pot_type, self.options.potential_poly_deg, prog)
                 self.J_matrix = block_diag(J_mat_vars, np.zeros((self.state_dim,self.state_dim)))
                 x_and_xt_and_1 = np.hstack(([1], self.x, self.xt))
@@ -330,15 +330,19 @@ class DualEdge:
         else:
             # left vertex is full dimensional, add constraints and variables
             unique_variables.append(self.left.x)
-            all_linear_inequalities.append(self.left.vertex_set_linear_inequalities)
-            all_quadratic_inequalities.append(self.left.vertex_set_quadratic_inequalities)
+            if len(self.left.vertex_set_linear_inequalities) > 0:
+                all_linear_inequalities.append(self.left.vertex_set_linear_inequalities)
+            if len(self.left.vertex_set_quadratic_inequalities) > 0:
+                all_quadratic_inequalities.append(self.left.vertex_set_quadratic_inequalities)
         
         # handle edge variables
         # if self.u is not None:
         #     # if there are edge variables -- do stuff
         #     unique_variables.append(self.u)
-        all_linear_inequalities.append(edge_linear_inequality_constraints)
-        all_quadratic_inequalities.append(edge_quadratic_inequality_constraints)
+        if len(edge_linear_inequality_constraints) > 0:
+            all_linear_inequalities.append(edge_linear_inequality_constraints)
+        if len(edge_quadratic_inequality_constraints) > 0:
+            all_quadratic_inequalities.append(edge_quadratic_inequality_constraints)
 
         # handle right vertex
 
@@ -366,8 +370,10 @@ class DualEdge:
             # else:
                 # unique_variables.append(self.right.x)
             unique_variables.append(self.right.x)
-            all_linear_inequalities.append(self.right.vertex_set_linear_inequalities)
-            all_quadratic_inequalities.append(self.right.vertex_set_quadratic_inequalities)
+            if len(self.right.vertex_set_linear_inequalities) > 0:
+                all_linear_inequalities.append(self.right.vertex_set_linear_inequalities)
+            if len(self.right.vertex_set_quadratic_inequalities) > 0:
+                all_quadratic_inequalities.append(self.right.vertex_set_quadratic_inequalities)
 
         # handle target vertex
         if self.right.target_set_type is Point:
@@ -384,8 +390,10 @@ class DualEdge:
         else:
             # right vertex 
             unique_variables.append(self.right.xt)
-            all_linear_inequalities.append(self.right.target_set_linear_inequalities)
-            all_quadratic_inequalities.append(self.right.target_set_quadratic_inequalities)
+            if len(self.right.target_set_linear_inequalities) > 0:
+                all_linear_inequalities.append(self.right.target_set_linear_inequalities)
+            if len(self.right.target_set_quadratic_inequalities) > 0:
+                all_quadratic_inequalities.append(self.right.target_set_quadratic_inequalities)
 
 
         edge_cost = self.cost_function_surrogate(self.left.x, None, self.right.x, self.left.xt)
@@ -478,19 +486,18 @@ class PolynomialDualGCS:
     def BuildTheProgram(self):
         for (v_name, v_moments, vt_moments) in self.push_up_vertices:
             self.vertices[v_name].push_up_on_potentials(self.prog, v_moments, vt_moments)
-            for v in self.vertices.values():
-                v.push_down_on_flow_violation(self.prog, vt_moments)
 
             if not self.options.allow_vertex_revisits:
+                for v in self.vertices.values():
+                    v.push_down_on_flow_violation(self.prog, vt_moments)
+
                 # add penalty cost on edge penelties
                 for mat in self.bidir_flow_violation_matrices:
                     self.prog.AddLinearCost( np.sum(mat * vt_moments))
 
-        if not self.options.allow_vertex_revisits:
-            for edge in self.edges.values():
-                edge.define_edge_polynomials_and_sos_constraints(self.prog)
-
-        raise NotImplementedError()
+        # if not self.options.allow_vertex_revisits:
+        for edge in self.edges.values():
+            edge.define_edge_polynomials_and_sos_constraints(self.prog)
 
     def AddBidirectionalEdges(
         self,
