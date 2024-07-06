@@ -22,7 +22,7 @@ class ProgramOptions:
 
         # potential type
         self.potential_poly_deg = 2
-        self.pot_type = FREE_POLY
+        self.pot_type = PSD_POLY
         self.policy_lookahead = 1
 
         # ----------------------------------
@@ -104,7 +104,7 @@ class ProgramOptions:
         assert not np.sum(policy_options) < 1, "must select policy lookahead option"
         assert not np.sum(policy_options) > 1, "selected multiple policy lookahead options"
 
-        assert not (self.policy_use_l2_norm_cost and self.policy_use_quadratic_cost)
+        # assert not (self.policy_use_l2_norm_cost and self.policy_use_quadratic_cost)
 
 
 

@@ -267,14 +267,16 @@ def lookahead_policy(
         assert vertex.target_set_type is Point, "target set not passed when target set not a point"
         target_state = vertex.target_convex_set.x()
 
-    full_path = []  # type: T.List[T.List[npt.NDarray]]
+    full_trajectory = []  # type: T.List[T.List[npt.NDarray]]
     vertex_path_so_far = [vertex_now]  # type: T.List[DualVertex]
 
     num_iterations = 0
 
     while not vertex_now.vertex_is_target:
+        # print([v.name for v in vertex_path_so_far])
+        # print(full_trajectory)
         # use a k-step lookahead to obtain optimal k-step lookahead path
-        _, bezier_path, vertex_path = get_k_step_optimal_path(
+        _, traj, vertex_path = get_k_step_optimal_path(
             graph,
             vertex_now,
             state_now,
@@ -282,27 +284,24 @@ def lookahead_policy(
             already_visited=vertex_path_so_far,
             target_state = target_state,
         )
-        if bezier_path is None:
+        if traj is None:
             WARN("k-step optimal path couldn't find a solution", initial_state)
             ERROR(vertex_now.name, state_now, vertex_now.convex_set.PointInSet(state_now))
             return None, None
         # take just the first action from that path, then repeat
-        first_segment = bezier_path[0]
-        full_path.append(first_segment)
-        vertex_now, state_now = (
-            vertex_path[1],
-            first_segment[-1],
-        )
-        state_now = vertex_now.convex_set.Projection(state_now)[1].flatten()
+        vertex_now = vertex_path[1]
+        state_now = vertex_now.convex_set.Projection(traj[1])[1].flatten()
         vertex_path_so_far.append(vertex_now)
+        full_trajectory.append(state_now)
+
         num_iterations += 1
         if num_iterations > options.forward_iteration_limit:
             WARN("exceeded number of fowrard iterations")
-            return full_path, vertex_path_so_far
+            return full_trajectory, vertex_path_so_far
 
-    full_path = postprocess_the_path(graph, vertex_path_so_far, full_path, initial_state, options, target_state)
+    full_trajectory = postprocess_the_path(graph, vertex_path_so_far, full_trajectory, initial_state, options, target_state)
 
-    return full_path, vertex_path_so_far
+    return full_trajectory, vertex_path_so_far
 
 
 def lookahead_with_backtracking_policy(

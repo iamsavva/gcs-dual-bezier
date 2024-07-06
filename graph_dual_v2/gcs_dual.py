@@ -239,8 +239,8 @@ class DualVertex:
 
 
     def push_up_on_potentials(self, prog:MathematicalProgram, vertex_moments:npt.NDArray, target_moments:npt.NDArray) -> Expression:
-        assert verify_necessary_conditions_for_moments_supported_on_set(vertex_moments, self.convex_set), "moment matrix does not satisfy necessary SDP conditions for being supported on vertexsets"
-        assert verify_necessary_conditions_for_moments_supported_on_set(target_moments, self.target_convex_set), "targetmoment matrix does not satisfy necessary SDP conditions for being supported on target set"
+        # assert verify_necessary_conditions_for_moments_supported_on_set(vertex_moments, self.convex_set), "moment matrix does not satisfy necessary SDP conditions for being supported on vertexsets"
+        # assert verify_necessary_conditions_for_moments_supported_on_set(target_moments, self.target_convex_set), "targetmoment matrix does not satisfy necessary SDP conditions for being supported on target set"
 
         moment_matrix = make_product_of_indepent_moment_matrices(vertex_moments,target_moments )
         prog.AddLinearCost(-np.sum(self.J_matrix * moment_matrix))
@@ -624,11 +624,11 @@ class PolynomialDualGCS:
             gcs_e = gcs.AddEdge(left_gcs_v, right_gcs_v, e.name)
             # add cost
             left_point, right_point = gcs_e.xu(), gcs_e.xv()
-            if self.options.policy_use_l2_norm_cost:
-                gcs_e.AddCost(Binding[L2NormCost](cost, np.hstack((left_point, right_point))))
-            elif self.options.policy_use_quadratic_cost:
-                gcs_e.AddCost((left_point-right_point).dot(left_point-right_point))
-            else:
-                gcs_e.AddCost(e.cost_function(left_point, right_point, target_state))
+            # if self.options.policy_use_l2_norm_cost:
+            #     gcs_e.AddCost(Binding[L2NormCost](cost, np.hstack((left_point, right_point))))
+            # elif self.options.policy_use_quadratic_cost:
+            #     gcs_e.AddCost((left_point-right_point).dot(left_point-right_point))
+            # else:
+            #     gcs_e.AddCost(e.cost_function(left_point, right_point, target_state))
 
         return gcs, gcs_vertices, target_vertex

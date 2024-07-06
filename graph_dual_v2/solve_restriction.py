@@ -58,6 +58,7 @@ from util import (
     YAY,
     WARN,
     ERROR,
+    latex
     # ChebyshevCenter,
     # get_kth_control_point
 )  # pylint: disable=import-error, no-name-in-module, unused-import
@@ -89,8 +90,9 @@ def get_path_cost(
         target_state = graph.target_convex_set.x()
 
     cost = 0.0
-    for index, x_v in enumerate(vertex_trajectory):
+    for index in range(len(vertex_trajectory)-1):
         edge = graph.edges[get_edge_name(vertex_path[index].name, vertex_path[index + 1].name)]
+        x_v = vertex_trajectory[index]
         x_v_1 = vertex_trajectory[index+1]
         if use_surrogate:
             cost += edge.cost_function_surrogate(x_v, None, x_v_1, target_state)
@@ -137,35 +139,35 @@ def solve_parallelized_convex_restriction(
 
         # for every vertex:
         for i, vertex in enumerate(vertex_path):
-            x = prog.NewContinuousVariables(vertex_path[0].state_dim)
+            x = prog.NewContinuousVariables(vertex.state_dim, "x"+str(i))
             vertex_trajectory.append(x)
             add_set_membership(prog, vertex.convex_set, x, True)
 
             if i == 0:
+                # print(i, "lin con",  eq(x, state_now))
                 prog.AddLinearConstraint( eq(x, state_now))
             else:
                 edge = graph.edges[get_edge_name(vertex_path[i - 1].name, vertex.name)]
                 cost = edge.cost_function(vertex_trajectory[i-1], None, x, target_state)
                 prog.AddCost(cost)
 
-                for evaluator in edge.linear_inequality_evaluators:
-                    prog.AddLinearConstraint(evaluator(vertex_trajectory[i-1], None, x, target_state))
-                for evaluator in edge.quadratic_inequality_evaluators:
-                    prog.AddConstraint(evaluator(vertex_trajectory[i-1], None, x, target_state))
-                for evaluator in edge.equality_evaluators:
-                    prog.AddLinearConstraint(evaluator(vertex_trajectory[i-1], None, x, target_state))
+                # for evaluator in edge.linear_inequality_evaluators:
+                #     prog.AddLinearConstraint(evaluator(vertex_trajectory[i-1], None, x, target_state))
+                # for evaluator in edge.quadratic_inequality_evaluators:
+                #     prog.AddConstraint(evaluator(vertex_trajectory[i-1], None, x, target_state))
+                # for evaluator in edge.equality_evaluators:
+                #     prog.AddLinearConstraint(evaluator(vertex_trajectory[i-1], None, x, target_state))
 
             if i == len(vertex_path) - 1:  
                 # if using target heuristic cost:
                 if not options.policy_use_zero_heuristic:
-                    if target_state is not None:
-                        # goal conditioned case
-                        if vertex.vertex_is_target and vertex.use_target_constraint:
-                            # if a target vertex -- just add target constraint
-                            prog.AddLinearConstraint( eq(x, target_state)) 
-                        else:
-                            cost = vertex.get_cost_to_go_at_point(x, target_state)
-                            prog.AddCost(cost)
+                    # goal conditioned case
+                    if vertex.vertex_is_target and vertex.use_target_constraint:
+                        # if a target vertex -- just add target constraint
+                        prog.AddLinearConstraint( eq(x, target_state)) 
+                    else:
+                        cost = vertex.get_cost_to_go_at_point(x, target_state)
+                        prog.AddCost(cost)
 
         vertex_trajectories.append(vertex_trajectory)
 
@@ -211,6 +213,8 @@ def solve_parallelized_convex_restriction(
             if options.policy_use_robust_mosek_params:
                 solver_options.SetOption(MosekSolver.id(), "MSK_DPAR_INTPNT_CO_TOL_REL_GAP", 1e-3)
                 solver_options.SetOption(MosekSolver.id(), "MSK_IPAR_INTPNT_SOLVE_FORM", 1)
+
+            # latex(prog)
 
             # solve the program
             solution = mosek_solver.Solve(prog, solver_options=solver_options)

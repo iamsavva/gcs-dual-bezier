@@ -58,7 +58,9 @@ from util import (
 
 from gcs_util import get_edge_name, make_quadratic_cost_function_matrices
 
-from graph_dual import QUADRATIC_COST, PolynomialDualGCS, DualEdge, DualVertex
+from gcs_dual import PolynomialDualGCS, DualEdge, DualVertex
+
+
 
 from scipy.special import comb
 
@@ -154,7 +156,7 @@ def plot_bezier(
                     line=dict(width=linewidth, dash='dot'),
                     mode="lines",
                     name=line_name,
-                    showlegend=first and line_name is not "",
+                    showlegend=first and line_name != "",
                 )
             )
         else: 
@@ -166,7 +168,7 @@ def plot_bezier(
                     line=dict(width=linewidth),
                     mode="lines",
                     name=line_name,
-                    showlegend=first and line_name is not "",
+                    showlegend=first and line_name != "",
                 )
             )
         first = False
