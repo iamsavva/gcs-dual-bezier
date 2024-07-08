@@ -342,6 +342,9 @@ def lookahead_with_backtracking_policy(
             decision_index -= 1
         else:
             node = decision_options[decision_index].get()[1] # type: Node
+            print([v.name for v in node.vertex_path_so_far])
+            print(node.trajectory_so_far)
+            print(node.vertex_now.name, node.state_now)
             if node.vertex_now.vertex_is_target:
                 found_target = True
                 target_node = node

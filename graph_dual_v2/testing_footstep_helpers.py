@@ -63,7 +63,7 @@ class Terrain(object):
         self.stepping_stones = []
 
         # add initial stepping stone to the terrain
-        initial = self.add_stone([0, 0], 1, 1, "initial")
+        initial = self.add_stone([0, 0], 1, 1.8, "initial")
 
         # add bridge stepping stones to the terrain
         # gap between bridge stones equals bridge stone width
@@ -151,3 +151,24 @@ class Terrain(object):
 
         # set title
         plt.title(title)
+
+
+def footstep2position(planner_footstep):
+    # For now assume left foot is initially at [0.,0.] and always move right foot first
+    n_steps = planner_footstep.shape[0]
+    position_left = np.zeros((n_steps, 2))
+    position_right = np.zeros((n_steps, 2))
+    position_right[0, :] = np.array([0.0, -0.2])
+
+    for i in range(n_steps):
+        if i % 2 == 0:
+            # odd steps: right foot stationary, assign value to left foot
+            position_left[i, :] = planner_footstep[i, :]
+            if i > 0:
+                position_right[i, :] = position_right[i - 1, :]
+        else:
+            # even steps: left foot stationary, assign value to right foot
+            position_right[i, :] = planner_footstep[i, :]
+            position_left[i, :] = position_left[i - 1, :]
+    return position_left, position_right
+
