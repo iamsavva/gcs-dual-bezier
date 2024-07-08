@@ -197,21 +197,20 @@ def postprocess_the_path(graph:PolynomialDualGCS,
     return full_path
 
 class Node:
-    def __init__(self, vertex_now: DualVertex, state_now:npt.NDArray, bezier_path_so_far:T.List[T.List[npt.NDArray]], vertex_path_so_far:T.List[DualVertex]):
+    def __init__(self, vertex_now: DualVertex, state_now:npt.NDArray, trajectory_so_far:T.List[T.List[npt.NDArray]], vertex_path_so_far:T.List[DualVertex]):
         self.vertex_now = vertex_now
         self.state_now = state_now
-        self.bezier_path_so_far = bezier_path_so_far
+        self.trajectory_so_far = trajectory_so_far
         self.vertex_path_so_far = vertex_path_so_far
 
-    def extend(self, next_bezier_curve: T.List[npt.NDArray], next_vertex: DualVertex) -> "Node":
-        next_point = next_bezier_curve[-1]
+    def extend(self, next_point: npt.NDArray, next_vertex: DualVertex) -> "Node":
         if not next_vertex.convex_set.PointInSet(next_point):
             # point not in set, need to project due to bad numerics
             next_point = next_vertex.convex_set.Projection(next_point)[1].flatten()
 
         return Node(next_vertex, 
                     next_point,
-                    self.bezier_path_so_far + [next_bezier_curve], 
+                    self.trajectory_so_far + [next_point], 
                     self.vertex_path_so_far + [next_vertex]
                     )
     
@@ -267,7 +266,7 @@ def lookahead_policy(
         assert vertex.target_set_type is Point, "target set not passed when target set not a point"
         target_state = vertex.target_convex_set.x()
 
-    full_trajectory = []  # type: T.List[T.List[npt.NDarray]]
+    full_trajectory = [state_now]  # type: T.List[T.List[npt.NDarray]]
     vertex_path_so_far = [vertex_now]  # type: T.List[DualVertex]
 
     num_iterations = 0
@@ -328,9 +327,8 @@ def lookahead_with_backtracking_policy(
 
     # cost, current state, last state, current vertex, state path so far, vertex path so far
     decision_options = [ PriorityQueue() ]
-    decision_options[0].put( (0, Node(vertex, initial_state, [], [vertex])) )
+    decision_options[0].put( (0, Node(vertex, initial_state, [initial_state], [vertex])) )
     num_times_solved_convex_restriction = 0
-
 
     decision_index = 0
     found_target = False
@@ -360,9 +358,6 @@ def lookahead_with_backtracking_policy(
                 vertex_paths = get_all_n_step_paths_no_revisits(
                     graph, options.policy_lookahead, node.vertex_now, node.vertex_path_so_far
                 )
-            # print("vertex paths at vertex ", node.vertex_now.name)
-            # for v_path in vertex_paths:
-            #     print([v.name for v in v_path])
 
             # for every path -- solve convex restriction, add next states
             number_of_iterations += 1
@@ -372,45 +367,24 @@ def lookahead_with_backtracking_policy(
                 return None, None
             
             for vertex_path in vertex_paths:
-                bezier_curves = solve_convex_restriction(graph, vertex_path, node.state_now, options, target_state=target_state, one_last_solve=False)
-                # print(node.state_now, node.vertex_now.convex_set.PointInSet(node.state_now))
-                # print([v.name for v in vertex_path])
-                # print(bezier_curves)
+                trajectory = solve_convex_restriction(graph, vertex_path, node.state_now, options, target_state=target_state, one_last_solve=False)
                 num_times_solved_convex_restriction += 1
-                if bezier_curves is not None:
-                    add_edge_and_vertex_violations = False
+                if trajectory is not None:
                     add_target_heuristic = not options.policy_use_zero_heuristic
-                    next_node = node.extend(bezier_curves[0], vertex_path[1])
-                    cost_of_path = get_path_cost(graph, next_node.vertex_path_so_far, next_node.bezier_path_so_far, add_edge_and_vertex_violations, add_target_heuristic, target_state=target_state)
+                    next_node = node.extend(trajectory[1], vertex_path[1])
+                    cost_of_path = get_path_cost(graph, next_node.vertex_path_so_far, next_node.trajectory_so_far, False, add_target_heuristic, target_state)
                     try:
                         decision_options[decision_index + 1].put( (cost_of_path, next_node ))
                     except:
                         print(cost_of_path, next_node)
-            # print("------ next")
             decision_index += 1
-            # TODO: make parallelized problem to be always feasible
-
-            # for every path -- solve convex restriction, add next states
-            # print(len(vertex_paths))
-            # timer = timeit()
-            # solutions = solve_parallelized_convex_restriction(graph, vertex_paths, node.state_now, options, target_state=target_state, one_last_solve=False)
-            # timer.dt("solving", print_stuff = options.verbose_solve_times)
-            # num_times_solved_convex_restriction += 1
-            # for (vertex_path, bezier_curves) in solutions:
-            #     next_node = node.extend(bezier_curves[0], vertex_path[1])
-            #     # evaluate the cost
-            #     add_edge_and_vertex_violations = options.policy_add_violation_penalties and not options.policy_use_zero_heuristic
-            #     add_target_heuristic = not options.policy_use_zero_heuristic
-            #     cost_of_path = get_path_cost(graph, next_node.vertex_path_so_far, next_node.bezier_path_so_far, add_edge_and_vertex_violations, add_target_heuristic, target_state=target_state)
-            #     decision_options[decision_index + 1].put( (cost_of_path, next_node ))
-            # timer.dt("quing", print_stuff = options.verbose_solve_times)
 
     if options.policy_verbose_number_of_restrictions_solves:
         INFO("solved the convex restriction", num_times_solved_convex_restriction, "times")
 
     if found_target:
-        full_path = postprocess_the_path(graph, target_node.vertex_path_so_far, target_node.bezier_path_so_far, initial_state, options, target_state)
-        return full_path, target_node.vertex_path_so_far
+        trajectory = postprocess_the_path(graph, target_node.vertex_path_so_far, target_node.trajectory_so_far, initial_state, options, target_state)
+        return trajectory, target_node.vertex_path_so_far
         
     else:
         WARN("no path from start vertex to target!")

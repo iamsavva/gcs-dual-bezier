@@ -96,6 +96,72 @@ def MakeBezier(t: npt.NDArray, X: npt.NDArray):
     return xx
 
 
+def plot_linear_segments(
+    fig: go.Figure,
+    linear_segments: T.List[npt.NDArray],
+    color="purple",
+    name=None,
+    linewidth=3,
+    marker_size = 3,
+    maker_outline_width = 8,
+    plot_start_point = True,
+    dotted=True,
+    plot_start_target_only=False
+):
+    showlegend = False
+    line_name = ""
+    if name is not None:
+        line_name = name
+        showlegend = True
+
+    full_path = None
+    first = True
+
+    if plot_start_target_only:
+        fig.add_trace(
+            go.Scatter(
+                x=[linear_segments[0][0], linear_segments[-1][0]],
+                y=[linear_segments[0][1], linear_segments[-1][1]],
+                mode="markers",
+                marker=dict(
+                    color='white',        # Set the fill color of the markers
+                    size=marker_size,             # Set the size of the markers
+                    line=dict(
+                        color=color,     # Set the outline color of the markers
+                        width=maker_outline_width          # Set the width of the marker outline
+                    )
+                ),
+                showlegend=False,
+            )
+        )
+        return
+
+    line_dict = dict(width=linewidth)
+    if dotted: 
+        line_dict = dict(width=linewidth, dash='dot')
+
+    # plot bezier curves
+    fig.add_trace(
+        go.Scatter(
+            x=linear_segments[:, 0],
+            y=linear_segments[:, 1],
+            marker_color=color,
+            line=line_dict,
+            mode="lines+markers",
+            name=line_name,
+            marker=dict(
+                    color='white',        # Set the fill color of the markers
+                    size=marker_size,             # Set the size of the markers
+                    line=dict(
+                        color=color,     # Set the outline color of the markers
+                        width=maker_outline_width          # Set the width of the marker outline
+                    )
+                ),
+            showlegend=first and line_name != "",
+        )
+    )
+
+
 def plot_bezier(
     fig: go.Figure,
     bezier_curves: T.List[T.List[npt.NDArray]],
@@ -124,13 +190,13 @@ def plot_bezier(
                 y=[bezier_curves[0][0][1], bezier_curves[-1][-1][1]],
                 mode="markers",
                 marker=dict(
-                color='white',        # Set the fill color of the markers
-                size=marker_size,             # Set the size of the markers
-                line=dict(
-                    color=control_point_color,     # Set the outline color of the markers
-                    width=8          # Set the width of the marker outline
-                )
-            ),
+                    color='white',        # Set the fill color of the markers
+                    size=marker_size,             # Set the size of the markers
+                    line=dict(
+                        color=control_point_color,     # Set the outline color of the markers
+                        width=8          # Set the width of the marker outline
+                    )
+                ),
                 showlegend=False,
             )
         )

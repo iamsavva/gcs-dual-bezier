@@ -151,12 +151,12 @@ def solve_parallelized_convex_restriction(
                 cost = edge.cost_function(vertex_trajectory[i-1], None, x, target_state)
                 prog.AddCost(cost)
 
-                # for evaluator in edge.linear_inequality_evaluators:
-                #     prog.AddLinearConstraint(evaluator(vertex_trajectory[i-1], None, x, target_state))
-                # for evaluator in edge.quadratic_inequality_evaluators:
-                #     prog.AddConstraint(evaluator(vertex_trajectory[i-1], None, x, target_state))
-                # for evaluator in edge.equality_evaluators:
-                #     prog.AddLinearConstraint(evaluator(vertex_trajectory[i-1], None, x, target_state))
+                for evaluator in edge.linear_inequality_evaluators:
+                    prog.AddLinearConstraint(ge(evaluator(vertex_trajectory[i-1], None, x, target_state), 0))
+                for evaluator in edge.quadratic_inequality_evaluators:
+                    prog.AddConstraint(ge(evaluator(vertex_trajectory[i-1], None, x, target_state), 0))
+                for evaluator in edge.equality_evaluators:
+                    prog.AddLinearConstraint(eq(evaluator(vertex_trajectory[i-1], None, x, target_state), 0))
 
             if i == len(vertex_path) - 1:  
                 # if using target heuristic cost:
@@ -246,7 +246,7 @@ def solve_convex_restriction(
     verbose_failure:bool =False,
     target_state:npt.NDArray = None,
     one_last_solve = False
-) -> T.List[T.List[npt.NDArray]]:
+) -> T.List[npt.NDArray]:
     result = solve_parallelized_convex_restriction(graph, [vertex_path], state_now, options, verbose_failure, target_state, one_last_solve, verbose_solve_success = False)
     if result is None:
         return None
