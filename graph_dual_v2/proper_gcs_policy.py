@@ -373,13 +373,15 @@ def lookahead_with_backtracking_policy(
                 trajectory = solve_convex_restriction(graph, vertex_path, node.state_now, options, target_state=target_state, one_last_solve=False)
                 num_times_solved_convex_restriction += 1
                 if trajectory is not None:
-                    add_target_heuristic = not options.policy_use_zero_heuristic
-                    next_node = node.extend(trajectory[1], vertex_path[1])
-                    cost_of_path = get_path_cost(graph, next_node.vertex_path_so_far, next_node.trajectory_so_far, False, add_target_heuristic, target_state)
-                    try:
-                        decision_options[decision_index + 1].put( (cost_of_path, next_node ))
-                    except:
-                        print(cost_of_path, next_node)
+                    # HEURISTIC: do not stay in the same point
+                    if not (np.allclose(trajectory[0], trajectory[1])):
+                        add_target_heuristic = not options.policy_use_zero_heuristic
+                        next_node = node.extend(trajectory[1], vertex_path[1])
+                        cost_of_path = get_path_cost(graph, next_node.vertex_path_so_far, next_node.trajectory_so_far, False, add_target_heuristic, target_state)
+                        try:
+                            decision_options[decision_index + 1].put( (cost_of_path, next_node ))
+                        except:
+                            print(cost_of_path, next_node)
             decision_index += 1
 
     if options.policy_verbose_number_of_restrictions_solves:
