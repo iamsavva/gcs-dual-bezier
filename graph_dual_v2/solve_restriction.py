@@ -198,7 +198,13 @@ def solve_parallelized_convex_restriction(
         for i, vertex in enumerate(vertex_path):
             x = prog.NewContinuousVariables(vertex.state_dim, "x"+str(i))
             vertex_trajectory.append(x)
-            add_set_membership(prog, vertex.convex_set, x, True)
+
+            if not (vertex.vertex_is_target and options.policy_use_target_condition_only and vertex.target_policy_terminating_condition is not None):
+                add_set_membership(prog, vertex.convex_set, x, True)
+            else:
+                terminating_condition = recenter_convex_set(vertex.target_policy_terminating_condition, target_state)
+                add_set_membership(prog, terminating_condition, x, True)
+                # add_set_membership(prog, vertex.convex_set, x, True)
 
             if i == 0:
                 # print(i, "lin con",  eq(x, state_now))
