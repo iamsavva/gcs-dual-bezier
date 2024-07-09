@@ -269,14 +269,14 @@ class DualEdge:
         self.bidirectional_edge_violation = bidirectional_edge_violation
 
         # TODO: need to be implemented
-        # self.u = None
         self.linear_inequality_evaluators = []
         self.quadratic_inequality_evaluators = []
         self.equality_evaluators = []
-        # self.dynamics_constraints_dictionary = dict()
-    
-    # def define_edge_variables(self, prog: MathematicalProgram, edge_var_dim:int):
-    #     self.u = prog.NewContinuousVariables(edge_var_dim)
+
+        self.u = None
+        self.u_bounding_set = None
+        self.groebner_basis_substitutions = dict()
+        self.groebner_basis_equality_evaluators = []
 
     def make_constraints(self):
         linear_inequality_constraints = []
@@ -336,9 +336,17 @@ class DualEdge:
                 all_quadratic_inequalities.append(self.left.vertex_set_quadratic_inequalities)
         
         # handle edge variables
-        # if self.u is not None:
-        #     # if there are edge variables -- do stuff
-        #     unique_variables.append(self.u)
+        if self.u is not None:
+            # if there are edge variables -- do stuff
+            unique_variables.append(self.u)
+            if self.u_bounding_set is not None:
+                u_linear_ineq, u_quad_ineq = get_set_membership_inequalities(self.u, self.u_bounding_set)
+                if len(u_linear_ineq) > 0:
+                    all_linear_inequalities.append(u_linear_ineq)
+                if len(u_quad_ineq) > 0:
+                    all_quadratic_inequalities.append(u_quad_ineq)
+
+            
         if len(edge_linear_inequality_constraints) > 0:
             all_linear_inequalities.append(edge_linear_inequality_constraints)
         if len(edge_quadratic_inequality_constraints) > 0:
@@ -348,8 +356,9 @@ class DualEdge:
 
         # can't have right vertex be a point and dynamics constraint, dunno how to substitute.
         # need an equality constraint instead, x_right will be subsituted
-        # if self.right.set_type is Point and len(self.dynamics_constraints_dictionary) > 0:
-        #     assert False, "can't have right vertex be a point AND have dynamics constraints; put dynamics as an equality constraint instead."
+        assert len(self.groebner_basis_equality_evaluators) == len(self.groebner_basis_substitutions)
+        if self.right.set_type is Point and len(self.groebner_basis_equality_evaluators) > 0:
+            assert False, "can't have right vertex be a point AND have dynamics constraints; put dynamics as an equality constraint instead."
 
         if self.right.set_type is Point:
             # right vertex is a point -- substitutions
@@ -357,19 +366,20 @@ class DualEdge:
                 substitutions[xr_i] = self.right.convex_set.x()[i]
         else:
             # full dimensional set
-            # if len(self.dynamics_constraints_dictionary) > 0:
-            #     # we have (possibly partial) dynamics constraints -- add them
-            #     right_vertex_variables = []
-            #     for i, xr_i in enumerate(self.right.x):
-            #         # if it's in subsitutions -- add to substition dictionary, else add to unique vars
-            #         if xr_i in self.dynamics_constraints_dictionary: 
-            #             substitutions[xr_i] = self.dynamics_constraints_dictionary[xr_i]
-            #         else:
-            #             right_vertex_variables.append(self.right.x[i])
-            #     unique_variables.append(np.array(right_vertex_variables))
-            # else:
-                # unique_variables.append(self.right.x)
-            unique_variables.append(self.right.x)
+            if len(self.groebner_basis_substitutions) > 0:
+                # we have (possibly partial) dynamics constraints -- add them
+                right_vertex_variables = []
+                for xr_i in self.right.x:
+                    # if it's in subsitutions -- add to substition dictionary, else add to unique vars
+                    if xr_i in self.groebner_basis_substitutions: 
+                        assert xr_i not in substitutions, xr_i
+                        substitutions[xr_i] = self.groebner_basis_substitutions[xr_i]
+                    else:
+                        right_vertex_variables.append(xr_i)
+                unique_variables.append(np.array(right_vertex_variables))
+            else:
+                unique_variables.append(self.right.x)
+            # unique_variables.append(self.right.x)
             if len(self.right.vertex_set_linear_inequalities) > 0:
                 all_linear_inequalities.append(self.right.vertex_set_linear_inequalities)
             if len(self.right.vertex_set_quadratic_inequalities) > 0:
@@ -394,7 +404,6 @@ class DualEdge:
                 all_linear_inequalities.append(self.right.target_set_linear_inequalities)
             if len(self.right.target_set_quadratic_inequalities) > 0:
                 all_quadratic_inequalities.append(self.right.target_set_quadratic_inequalities)
-
 
         edge_cost = self.cost_function_surrogate(self.left.x, None, self.right.x, self.left.xt)
         left_potential = self.left.potential
