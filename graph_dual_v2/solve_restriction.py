@@ -68,7 +68,7 @@ from gcs_util import get_edge_name, make_quadratic_cost_function_matrices, plot_
 from gcs_dual import PolynomialDualGCS, DualEdge, DualVertex
 # from plot_utils import plot_bezier
 
-from util import add_set_membership
+from util import add_set_membership, recenter_convex_set
 
 # ---------------------------------------------------------------------
 # ---------------------------------------------------------------------
@@ -231,13 +231,14 @@ def solve_parallelized_convex_restriction(
             if i == len(vertex_path) - 1:  
                 # if using target heuristic cost:
                 if not options.policy_use_zero_heuristic:
-                    # goal conditioned case
-                    if vertex.vertex_is_target and vertex.use_target_constraint:
-                        # if a target vertex -- just add target constraint
+                    cost = vertex.get_cost_to_go_at_point(x, target_state)
+                    prog.AddCost(cost)
+                if vertex.vertex_is_target:
+                    if vertex.target_policy_terminating_condition is None:
                         prog.AddLinearConstraint( eq(x, target_state)) 
                     else:
-                        cost = vertex.get_cost_to_go_at_point(x, target_state)
-                        prog.AddCost(cost)
+                        terminating_condition = recenter_convex_set(vertex.target_policy_terminating_condition, target_state)
+                        add_set_membership(prog, terminating_condition, x, True)
 
         vertex_trajectories.append(vertex_trajectory)
         edge_variable_trajectories.append(edge_variable_trajectory)

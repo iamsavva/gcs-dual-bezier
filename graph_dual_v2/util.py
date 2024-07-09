@@ -39,6 +39,7 @@ from pydrake.math import ( # pylint: disable=import-error, no-name-in-module, un
 )  
 
 from IPython.display import Markdown, display
+from scipy.linalg import block_diag
 
 def ERROR(*texts, verbose: bool = True):
     if verbose:
@@ -213,7 +214,7 @@ def get_kth_control_point(bezier:npt.NDArray, k:int, num_control_points:int) -> 
     state_dim = len(bezier)//num_control_points
     return bezier[ k*state_dim:(k+1)*state_dim ]
 
-def add_set_membership(prog:MathematicalProgram, convex_set:ConvexSet, x:npt.NDArray, ellipsoid_as_lorentz=True):
+def add_set_membership(prog:MathematicalProgram, convex_set:ConvexSet, x:npt.NDArray, ellipsoid_as_lorentz=True) -> None:
     if isinstance(convex_set, HPolyhedron):
         prog.AddLinearConstraint(le( convex_set.A().dot(x), convex_set.b()))
     elif isinstance(convex_set, Hyperrectangle):
@@ -232,3 +233,32 @@ def add_set_membership(prog:MathematicalProgram, convex_set:ConvexSet, x:npt.NDA
     else:
         assert False, "bad set in add_set_membership"
 
+
+
+def concatenate_polyhedra(set1:ConvexSet, set2:ConvexSet) -> HPolyhedron:
+    assert isinstance(set1, Hyperrectangle) or isinstance(set1, HPolyhedron)
+    assert isinstance(set2, Hyperrectangle) or isinstance(set2, HPolyhedron)
+    if isinstance(set1, Hyperrectangle):
+        hpoly1 = set1.MakeHPolyhedron()
+    else:
+        hpoly1 = set1
+    if isinstance(set2, Hyperrectangle):
+        hpoly2 = set2.MakeHPolyhedron()
+    else:
+        hpoly2 = set2
+    new_A = block_diag(hpoly1.A(), hpoly2.A())
+    new_b = np.vstack((hpoly1.b().reshape((len(hpoly1.b()),1)), hpoly2.b().reshape((len(hpoly2.b()),1))))
+    return HPolyhedron(new_A, new_b)
+
+def recenter_convex_set(convex_set: ConvexSet, center:npt.NDArray) -> ConvexSet:
+    if isinstance(convex_set, HPolyhedron):
+        assert False, "can't handle polyhedra:("
+    elif isinstance(convex_set, Hyperrectangle):
+        half_width = convex_set.Center() - convex_set.lb()
+        return Hyperrectangle(center-half_width, center+half_width)
+    elif isinstance(convex_set, Hyperellipsoid):
+        return Hyperellipsoid(convex_set.A(), center)
+    elif isinstance(convex_set, Point):
+        return Point(center)
+    else:
+        assert False, "bad set in add_set_membership"

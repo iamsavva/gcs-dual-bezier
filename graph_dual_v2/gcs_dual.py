@@ -102,6 +102,7 @@ class DualVertex:
         options: ProgramOptions,
         vertex_is_start: bool = False,
         vertex_is_target: bool = False,
+        target_policy_terminating_condition: ConvexSet = None,
         target_cost_matrix: npt.NDArray = None,
     ):
         self.name = name
@@ -113,7 +114,7 @@ class DualVertex:
         self.potential = None # type: Expression
         self.J_matrix = None # type: npt.NDArray
         self.J_matrix_solution = None # type: npt.NDArray
-        self.use_target_constraint = None # type: bool
+        # self.use_target_constraint = None # type: bool
 
         self.convex_set = convex_set
         self.set_type = type(convex_set)
@@ -122,7 +123,8 @@ class DualVertex:
             raise Exception("bad state set")
         
         self.target_convex_set = target_convex_set
-        self.target_set_type = type(target_convex_set)
+        self.target_policy_terminating_condition = target_policy_terminating_condition
+        self.target_set_type = type(target_convex_set)        
         # TODO: fix that, shouldn't need this technically
         assert convex_set.ambient_dimension() == target_convex_set.ambient_dimension(), "convex set and target set must have same ambient dimension"
         if self.target_set_type not in (HPolyhedron, Hyperrectangle, Hyperellipsoid, Point):
@@ -181,6 +183,7 @@ class DualVertex:
     def define_potential(self, prog: MathematicalProgram, target_cost_matrix:npt.NDArray):
         if not self.vertex_is_target:
             assert target_cost_matrix is None, "passed a target cost matrix not a non-target vertex"
+            assert self.target_policy_terminating_condition is None, "passed target box width why"
 
         if self.vertex_is_target:
             if target_cost_matrix is not None:
@@ -188,14 +191,11 @@ class DualVertex:
                 self.J_matrix = target_cost_matrix
                 x_and_xt_and_1 = np.hstack(([1], self.x, self.xt))
                 self.potential = np.sum( self.J_matrix * np.outer(x_and_xt_and_1, x_and_xt_and_1))
-                self.use_target_constraint = False
             else:
                 self.J_matrix = np.zeros(((2*self.state_dim+1, 2*self.state_dim+1)))
                 x_and_xt_and_1 = np.hstack(([1], self.x, self.xt))
                 self.potential = np.sum( self.J_matrix * np.outer(x_and_xt_and_1, x_and_xt_and_1))
-                self.use_target_constraint = True
         else:
-            self.use_target_constraint = None
             if self.target_set_type is Point:
                 _, J_mat_vars = make_potential(self.x, self.options.pot_type, self.options.potential_poly_deg, prog)
                 self.J_matrix = block_diag(J_mat_vars, np.zeros((self.state_dim,self.state_dim)))
@@ -285,11 +285,11 @@ class DualEdge:
 
         xl, xr, xt = self.left.x, self.right.x, self.left.xt
         for evaluator in self.linear_inequality_evaluators:
-            linear_inequality_constraints.append(evaluator(xl,None,xr,xt))
+            linear_inequality_constraints.append(evaluator(xl,self.u,xr,xt))
         for evaluator in self.quadratic_inequality_evaluators:
-            quadratic_inequality_constraints.append(evaluator(xl,None,xr,xt))
+            quadratic_inequality_constraints.append(evaluator(xl,self.u,xr,xt))
         for evaluator in self.equality_evaluators:
-            equality_constraints.append(evaluator(xl,None,xr,xt))
+            equality_constraints.append(evaluator(xl,self.u,xr,xt))
 
         # xl, u, xr, xt = self.left.x, self.u, self.right.x, self.left.xt
         # for evaluator in self.linear_inequality_evaluators:
@@ -356,7 +356,7 @@ class DualEdge:
 
         # can't have right vertex be a point and dynamics constraint, dunno how to substitute.
         # need an equality constraint instead, x_right will be subsituted
-        assert len(self.groebner_basis_equality_evaluators) == len(self.groebner_basis_substitutions)
+        # assert len(self.groebner_basis_equality_evaluators) == len(self.groebner_basis_substitutions)
         if self.right.set_type is Point and len(self.groebner_basis_equality_evaluators) > 0:
             assert False, "can't have right vertex be a point AND have dynamics constraints; put dynamics as an equality constraint instead."
 
@@ -376,7 +376,8 @@ class DualEdge:
                         substitutions[xr_i] = self.groebner_basis_substitutions[xr_i]
                     else:
                         right_vertex_variables.append(xr_i)
-                unique_variables.append(np.array(right_vertex_variables))
+                if len(right_vertex_variables) > 0:
+                    unique_variables.append(np.array(right_vertex_variables))
             else:
                 unique_variables.append(self.right.x)
             # unique_variables.append(self.right.x)
@@ -405,7 +406,7 @@ class DualEdge:
             if len(self.right.target_set_quadratic_inequalities) > 0:
                 all_quadratic_inequalities.append(self.right.target_set_quadratic_inequalities)
 
-        edge_cost = self.cost_function_surrogate(self.left.x, None, self.right.x, self.left.xt)
+        edge_cost = self.cost_function_surrogate(self.left.x, self.u, self.right.x, self.left.xt)
         left_potential = self.left.potential
         right_potential = self.right.potential
         expr = (
@@ -418,7 +419,7 @@ class DualEdge:
         
         define_sos_constraint_over_polyhedron_multivar_new(
             prog,
-            Variables(np.array(unique_variables).flatten()),
+            Variables(np.hstack(unique_variables).flatten()),
             all_linear_inequalities,
             all_quadratic_inequalities,
             edge_equality_constraints,
@@ -429,7 +430,7 @@ class DualEdge:
 
 
 class PolynomialDualGCS:
-    def __init__(self, options: ProgramOptions, target_convex_set:ConvexSet, target_cost_matrix:npt.NDArray = None):
+    def __init__(self, options: ProgramOptions, target_convex_set:ConvexSet, target_cost_matrix:npt.NDArray = None, target_policy_terminating_condition:ConvexSet=None):
         # variables creates for policy synthesis
         self.vertices = dict()  # type: T.Dict[str, DualVertex]
         self.edges = dict()  # type: T.Dict[str, DualEdge]
@@ -454,6 +455,7 @@ class PolynomialDualGCS:
             self.xt,
             options=options,
             vertex_is_target=True,
+            target_policy_terminating_condition=target_policy_terminating_condition,
             target_cost_matrix=target_cost_matrix,
         )
         self.vertices["target"] = vt

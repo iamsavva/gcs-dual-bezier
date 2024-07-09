@@ -84,6 +84,8 @@ class ProgramOptions:
         self.forward_iteration_limit = 10000
 
         self.allow_vertex_revisits = False
+
+        self.policy_use_target_condition_only = False
         
 
         # ----------------------------------
