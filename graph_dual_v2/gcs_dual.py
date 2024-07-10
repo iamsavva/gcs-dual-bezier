@@ -278,12 +278,16 @@ class DualEdge:
         self.groebner_basis_substitutions = dict()
         self.groebner_basis_equality_evaluators = []
 
-    def make_constraints(self):
+    def make_constraints(self, prog:MathematicalProgram):
         linear_inequality_constraints = []
         quadratic_inequality_constraints = []
         equality_constraints = []
 
         xl, xr, xt = self.left.x, self.right.x, self.left.xt
+        if self.left.name == self.right.name:
+            self.temp_right_indet = prog.NewIndeterminates(len(self.right.x))
+            xr = self.temp_right_indet
+
         for evaluator in self.linear_inequality_evaluators:
             linear_inequality_constraints.append(evaluator(xl,self.u,xr,xt))
         for evaluator in self.quadratic_inequality_evaluators:
@@ -291,13 +295,6 @@ class DualEdge:
         for evaluator in self.equality_evaluators:
             equality_constraints.append(evaluator(xl,self.u,xr,xt))
 
-        # xl, u, xr, xt = self.left.x, self.u, self.right.x, self.left.xt
-        # for evaluator in self.linear_inequality_evaluators:
-        #     linear_inequality_constraints.append(evaluator(xl,u,xr,xt))
-        # for evaluator in self.quadratic_inequality_evaluators:
-        #     quadratic_inequality_constraints.append(evaluator(xl,u,xr,xt))
-        # for evaluator in self.equality_evaluators:
-        #     equality_constraints.append(evaluator(xl,u,xr,xt))
         linear_inequality_constraints = np.array(linear_inequality_constraints).flatten()
         quadratic_inequality_constraints = np.array(quadratic_inequality_constraints).flatten()
         equality_constraints = np.array(equality_constraints).flatten()
@@ -316,11 +313,15 @@ class DualEdge:
         all_quadratic_inequalities = []
         substitutions = dict()
 
-        edge_linear_inequality_constraints, edge_quadratic_inequality_constraints, edge_equality_constraints = self.make_constraints()
+        edge_linear_inequality_constraints, edge_quadratic_inequality_constraints, edge_equality_constraints = self.make_constraints(prog)
 
         # what's happening?
         # i am trying to produce a list of unique variables that are necessary
         # and a list of substitutions
+
+        right_vars = self.right.x
+        if self.left.name == self.right.name:
+            right_vars = self.temp_right_indet
 
         # handle left vertex
         if self.left.set_type is Point:
@@ -356,35 +357,39 @@ class DualEdge:
 
         # can't have right vertex be a point and dynamics constraint, dunno how to substitute.
         # need an equality constraint instead, x_right will be subsituted
-        # assert len(self.groebner_basis_equality_evaluators) == len(self.groebner_basis_substitutions)
         if self.right.set_type is Point and len(self.groebner_basis_equality_evaluators) > 0:
             assert False, "can't have right vertex be a point AND have dynamics constraints; put dynamics as an equality constraint instead."
 
         if self.right.set_type is Point:
             # right vertex is a point -- substitutions
-            for i, xr_i in enumerate(self.right.x):
+            for i, xr_i in enumerate(right_vars):
                 substitutions[xr_i] = self.right.convex_set.x()[i]
         else:
             # full dimensional set
             if len(self.groebner_basis_substitutions) > 0:
                 # we have (possibly partial) dynamics constraints -- add them
                 right_vertex_variables = []
-                for xr_i in self.right.x:
+                for i, xr_i in enumerate(right_vars):
                     # if it's in subsitutions -- add to substition dictionary, else add to unique vars
-                    if xr_i in self.groebner_basis_substitutions: 
-                        assert xr_i not in substitutions, xr_i
-                        substitutions[xr_i] = self.groebner_basis_substitutions[xr_i]
+                    if self.right.x[i] in self.groebner_basis_substitutions: 
+                        assert xr_i not in substitutions
+                        substitutions[xr_i] = self.groebner_basis_substitutions[self.right.x[i]]
                     else:
                         right_vertex_variables.append(xr_i)
                 if len(right_vertex_variables) > 0:
                     unique_variables.append(np.array(right_vertex_variables))
             else:
-                unique_variables.append(self.right.x)
-            # unique_variables.append(self.right.x)
-            if len(self.right.vertex_set_linear_inequalities) > 0:
-                all_linear_inequalities.append(self.right.vertex_set_linear_inequalities)
-            if len(self.right.vertex_set_quadratic_inequalities) > 0:
-                all_quadratic_inequalities.append(self.right.vertex_set_quadratic_inequalities)
+                unique_variables.append(right_vars)
+
+            if self.left.name == self.right.name:
+                rv_linear_inequalities, rv_quadratic_inequalities = get_set_membership_inequalities(right_vars, self.right.convex_set)
+            else:
+                rv_linear_inequalities = self.right.vertex_set_linear_inequalities
+                rv_quadratic_inequalities = self.right.vertex_set_quadratic_inequalities
+            if len(rv_linear_inequalities) > 0:
+                all_linear_inequalities.append(rv_linear_inequalities)
+            if len(rv_quadratic_inequalities) > 0:
+                all_quadratic_inequalities.append(rv_quadratic_inequalities)
 
         # handle target vertex
         if self.right.target_set_type is Point:
@@ -394,21 +399,24 @@ class DualEdge:
         elif self.right.vertex_is_target:
             # right vertex is target: put subsitutions on target variables too
             for i, xt_i in enumerate(self.right.xt):
-                if self.right.x[i] in substitutions:
-                    substitutions[xt_i] = substitutions[self.right.x[i]]
+                if right_vars[i] in substitutions:
+                    substitutions[xt_i] = substitutions[right_vars[i]]
                 else:
-                    substitutions[xt_i] = self.right.x[i]
+                    substitutions[xt_i] = right_vars[i]
         else:
-            # right vertex 
             unique_variables.append(self.right.xt)
             if len(self.right.target_set_linear_inequalities) > 0:
                 all_linear_inequalities.append(self.right.target_set_linear_inequalities)
             if len(self.right.target_set_quadratic_inequalities) > 0:
                 all_quadratic_inequalities.append(self.right.target_set_quadratic_inequalities)
 
-        edge_cost = self.cost_function_surrogate(self.left.x, self.u, self.right.x, self.left.xt)
+        edge_cost = self.cost_function_surrogate(self.left.x, self.u, right_vars, self.left.xt)
         left_potential = self.left.potential
-        right_potential = self.right.potential
+        if self.left.name == self.right.name:
+            x_and_xt_and_1 = np.hstack(([1], right_vars, self.right.xt))
+            right_potential = np.sum(self.right.J_matrix * np.outer(x_and_xt_and_1, x_and_xt_and_1))
+        else:
+            right_potential = self.right.potential
         expr = (
             edge_cost
             + right_potential
@@ -416,7 +424,7 @@ class DualEdge:
             + self.bidirectional_edge_violation
             + self.right.total_flow_in_violation
         )
-        
+
         define_sos_constraint_over_polyhedron_multivar_new(
             prog,
             Variables(np.hstack(unique_variables).flatten()),
@@ -548,6 +556,7 @@ class PolynomialDualGCS:
         if options is None:
             options = self.options
         edge_name = get_edge_name(v_left.name, v_right.name)
+        assert edge_name not in self.edges
         e = DualEdge(
             edge_name,
             v_left,

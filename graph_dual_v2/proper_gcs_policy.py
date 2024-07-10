@@ -336,7 +336,7 @@ def lookahead_with_backtracking_policy(
                 )
             else:
                 vertex_paths = get_all_n_step_paths_no_revisits(
-                    graph, options.policy_lookahead, node.vertex_now(), node.vertex_path_so_far
+                    graph, options.policy_lookahead, node.vertex_now(), node.vertex_path
                 )
 
             # for every path -- solve convex restriction, add next states
@@ -346,20 +346,23 @@ def lookahead_with_backtracking_policy(
                 decision_index = -1
                 return None, None
             
+            # print("options")
             for vertex_path in vertex_paths:
                 r_sol = solve_convex_restriction(graph, vertex_path, node.point_now(), options, target_state=target_state, one_last_solve=False)
                 num_times_solved_convex_restriction += 1
                 if r_sol is not None:
                     # HEURISTIC: do not stay in the same point
                     if not (np.allclose(r_sol.trajectory[0], r_sol.trajectory[1], atol=1e-3)):
-                        add_target_heuristic = not options.policy_use_zero_heuristic
+                        # add_target_heuristic = not options.policy_use_zero_heuristic
+                        add_target_heuristic = True
                         next_node = node.extend(r_sol.trajectory[1], r_sol.edge_variable_trajectory[0], r_sol.vertex_path[1])
-                        # cost_of_que_node = get_path_cost(graph, next_node.vertex_path_so_far, next_node.trajectory_so_far, False, add_target_heuristic, target_state)
                         cost_of_que_node = r_sol.get_cost(graph, False, add_target_heuristic, target_state)
+                        # print(next_node.vertex_now().name, cost_of_que_node,3)
                         try:
                             decision_options[decision_index + 1].put( (cost_of_que_node+np.random.uniform(0,1e-9), next_node ))
                         except:
                             print(cost_of_que_node, next_node)
+            # print("---")
             decision_index += 1
 
     if options.policy_verbose_number_of_restrictions_solves:
