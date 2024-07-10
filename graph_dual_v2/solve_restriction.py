@@ -91,6 +91,12 @@ class RestrictionSolution:
     
     def edge_var_now(self) -> npt.NDArray:
         return self.edge_variable_trajectory[-1] if len(self.edge_variable_trajectory) > 0 else None
+    
+    def length(self):
+        return len(self.trajectory)
+
+    def vertex_names(self):
+        return [v.name for v in self.vertex_path]
 
     def extend(self, next_point: npt.NDArray, next_edge_var: npt.NDArray, next_vertex: DualVertex) -> "RestrictionSolution":
         if not next_vertex.convex_set.PointInSet(next_point):
