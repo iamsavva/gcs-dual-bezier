@@ -86,6 +86,8 @@ class ProgramOptions:
         self.allow_vertex_revisits = False
 
         self.policy_use_target_condition_only = False
+
+        self.num_simulated_cores = 16
         
 
         # ----------------------------------

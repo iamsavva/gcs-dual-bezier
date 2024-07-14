@@ -175,7 +175,7 @@ def solve_parallelized_convex_restriction(
     target_state:npt.NDArray = None,
     one_last_solve:bool = False,
     verbose_solve_success = True
-) -> T.List[RestrictionSolution]:
+) -> T.Tuple[T.List[RestrictionSolution], float]:
     """
     solve a convex restriction over a vertex path
     return cost of the vertex_path
@@ -307,6 +307,13 @@ def solve_parallelized_convex_restriction(
 
     timer.dt("just solving", print_stuff=options.verbose_solve_times)
 
+    if options.policy_solver == MosekSolver:
+        solver_solve_time = solution.get_solver_details().optimizer_time
+    elif options.policy_solver == ClarabelSolver:
+        solver_solve_time = solution.get_solver_details().solve_time
+    elif options.policy_solver == GurobiSolver:
+        solver_solve_time = solution.get_solver_details().optimizer_time
+
     final_result = []
     if solution.is_success():
         for i, v_path in enumerate(vertex_paths):
@@ -315,12 +322,12 @@ def solve_parallelized_convex_restriction(
             traj_solution = [solution.GetSolution(x) for x in vertex_trajectory]
             edge_traj_solution = [None if u is None else solution.GetSolution(u) for u in edge_variable_trajectory]
             final_result.append(RestrictionSolution(v_path, traj_solution, edge_traj_solution))
-        return final_result
+        return final_result, solver_solve_time
     else:
         WARN("failed to solve", verbose = verbose_solve_success)
         if verbose_failure:
             diditwork(solution)
-        return None
+        return None, solver_solve_time
     
 
 def solve_convex_restriction(
@@ -331,12 +338,12 @@ def solve_convex_restriction(
     verbose_failure:bool =False,
     target_state:npt.NDArray = None,
     one_last_solve = False
-) -> RestrictionSolution:
-    result = solve_parallelized_convex_restriction(graph, [vertex_path], state_now, options, verbose_failure, target_state, one_last_solve, verbose_solve_success = False)
+) -> T.Tuple[RestrictionSolution, float]:
+    result, dt = solve_parallelized_convex_restriction(graph, [vertex_path], state_now, options, verbose_failure, target_state, one_last_solve, verbose_solve_success = False)
     if result is None:
-        return None
+        return None, dt
     else:
-        return result[0]
+        return result[0], dt
     
 
 # ---

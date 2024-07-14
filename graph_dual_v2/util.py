@@ -235,20 +235,22 @@ def add_set_membership(prog:MathematicalProgram, convex_set:ConvexSet, x:npt.NDA
 
 
 
-def concatenate_polyhedra(set1:ConvexSet, set2:ConvexSet) -> HPolyhedron:
-    assert isinstance(set1, Hyperrectangle) or isinstance(set1, HPolyhedron)
-    assert isinstance(set2, Hyperrectangle) or isinstance(set2, HPolyhedron)
-    if isinstance(set1, Hyperrectangle):
-        hpoly1 = set1.MakeHPolyhedron()
-    else:
-        hpoly1 = set1
-    if isinstance(set2, Hyperrectangle):
-        hpoly2 = set2.MakeHPolyhedron()
-    else:
-        hpoly2 = set2
-    new_A = block_diag(hpoly1.A(), hpoly2.A())
-    new_b = np.vstack((hpoly1.b().reshape((len(hpoly1.b()),1)), hpoly2.b().reshape((len(hpoly2.b()),1))))
-    return HPolyhedron(new_A, new_b)
+def concatenate_polyhedra(sets:T.List[ConvexSet]) -> HPolyhedron:
+    res = None
+    for cset in sets:
+        assert isinstance(cset, Hyperrectangle) or isinstance(cset, HPolyhedron)
+        if isinstance(cset, Hyperrectangle):
+            hpoly = cset.MakeHPolyhedron()
+        else:
+            hpoly = cset
+
+        if res is None:
+            res = hpoly
+        else:
+            new_A = block_diag(res.A(), hpoly.A())
+            new_b = np.vstack((res.b().reshape((len(res.b()),1)), hpoly.b().reshape((len(hpoly.b()),1))))
+            res = HPolyhedron(new_A, new_b)
+    return res
 
 def recenter_convex_set(convex_set: ConvexSet, center:npt.NDArray) -> ConvexSet:
     if isinstance(convex_set, HPolyhedron):

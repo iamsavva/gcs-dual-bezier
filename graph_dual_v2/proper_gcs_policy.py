@@ -171,16 +171,17 @@ def postprocess_the_path(graph:PolynomialDualGCS,
                           restriction: RestrictionSolution,
                           initial_state:npt.NDArray, 
                           options:ProgramOptions = None, 
-                          target_state:npt.NDArray = None) -> RestrictionSolution:
+                          target_state:npt.NDArray = None) -> T.Tuple[RestrictionSolution, float]:
     if options is None:
         options = graph.options
     if options.verbose_restriction_improvement:
         cost_before = restriction.get_cost(graph, False, True, target_state=target_state)
     timer = timeit()
+    solver_time = 0.0
     # solve a convex restriction on the vertex sequence
     if options.postprocess_by_solving_restriction_on_mode_sequence:
         # print("postprocessing")
-        new_restriction = solve_convex_restriction(graph, restriction.vertex_path, initial_state, options, target_state=target_state, one_last_solve = True)
+        new_restriction, solver_time = solve_convex_restriction(graph, restriction.vertex_path, initial_state, options, target_state=target_state, one_last_solve = True)
         # verbose
         if options.verbose_restriction_improvement:
             cost_after = new_restriction.get_cost(graph, False, True, target_state=target_state)
@@ -196,7 +197,7 @@ def postprocess_the_path(graph:PolynomialDualGCS,
     else:
         new_restriction = restriction
     timer.dt("one last solve", print_stuff = options.verbose_solve_times)
-    return new_restriction
+    return new_restriction, solver_time
     
 def get_lookahead_cost(
     graph: PolynomialDualGCS,
@@ -313,6 +314,8 @@ def lookahead_with_backtracking_policy(
     target_node = None
     number_of_iterations = 0
 
+    total_solver_time = 0.0
+
     while not found_target:
         if decision_index == -1:
             return None, None
@@ -355,8 +358,10 @@ def lookahead_with_backtracking_policy(
                 return None, None
             
             INFO("options", verbose=options.policy_verbose_choices)
+            solve_times = []
             for vertex_path in vertex_paths:
-                r_sol = solve_convex_restriction(graph, vertex_path, node.point_now(), options, target_state=target_state, one_last_solve=False)
+                r_sol, solver_time = solve_convex_restriction(graph, vertex_path, node.point_now(), options, target_state=target_state, one_last_solve=False)
+                solve_times.append(solver_time)
                 num_times_solved_convex_restriction += 1
                 if r_sol is not None:
                     add_target_heuristic = True
@@ -367,6 +372,9 @@ def lookahead_with_backtracking_policy(
                         decision_options[decision_index + 1].put( (cost_of_que_node+np.random.uniform(0,1e-9), next_node ))
                     except:
                         WARN(cost_of_que_node, next_node)
+            if len(solve_times) > 0:
+                num_parallel_solves = np.ceil(len(vertex_paths)/options.num_simulated_cores)
+                total_solver_time += np.max(solve_times)*num_parallel_solves
             INFO("---", verbose=options.policy_verbose_choices)
             decision_index += 1
 
@@ -374,12 +382,13 @@ def lookahead_with_backtracking_policy(
         INFO("solved the convex restriction", num_times_solved_convex_restriction, "times")
 
     if found_target:
-        final_solution = postprocess_the_path(graph, target_node, initial_state, options, target_state)
-        return final_solution
+        final_solution, solver_time = postprocess_the_path(graph, target_node, initial_state, options, target_state)
+        total_solver_time += solver_time
+        return final_solution, total_solver_time
         
     else:
         WARN("did not find path from start vertex to target!")
-        return None
+        return None, total_solver_time
 
 
 
@@ -555,18 +564,18 @@ def obtain_rollout(
 
     timer = timeit()
     if options.use_lookahead_policy:
-        restriction = lookahead_policy(graph, vertex, state, options, target_state)
+        restriction, solve_time = lookahead_policy(graph, vertex, state, options, target_state)
     elif options.use_lookahead_with_backtracking_policy:
-        restriction = lookahead_with_backtracking_policy(graph, vertex, state, options, target_state)
+        restriction, solve_time = lookahead_with_backtracking_policy(graph, vertex, state, options, target_state)
     elif options.use_cheap_a_star_policy:
-        restriction = cheap_a_star_policy(graph, vertex, state, options, target_state)
+        restriction, solve_time = cheap_a_star_policy(graph, vertex, state, options, target_state)
     elif options.use_cheap_a_star_policy_parallelized:
-        restriction = cheap_a_star_policy_parallelized(graph, vertex, state, options, target_state)
+        restriction, solve_time = cheap_a_star_policy_parallelized(graph, vertex, state, options, target_state)
     else:
         raise Exception("not selected policy")
         
     dt = timer.dt(print_stuff = False)
-    return restriction, dt
+    return restriction, solve_time
 
 
 def get_statistics(
