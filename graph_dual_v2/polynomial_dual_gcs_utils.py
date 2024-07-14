@@ -328,3 +328,25 @@ def get_set_membership_inequalities(x:npt.NDArray, convex_set:ConvexSet):
 
     return linear_inequalities, quadratic_inequalities
 
+
+def get_set_intersection_inequalities(x:npt.NDArray, convex_set:ConvexSet, another_set:ConvexSet):
+    if isinstance(convex_set, Point) or isinstance(another_set, Point):
+        return [],[]
+
+    if isinstance(convex_set, Hyperellipsoid) or isinstance(another_set, Hyperellipsoid):
+        l1, q1 = get_set_membership_inequalities(x, convex_set)
+        l2, q2 = get_set_membership_inequalities(x, another_set)
+        return l1+l2, q1+q2
+    else:
+        if isinstance(convex_set, Hyperrectangle):
+            hpoly1 = convex_set.MakeHPolyhedron()
+        else:
+            hpoly1 = convex_set
+
+        if isinstance(another_set, Hyperrectangle):
+            hpoly2 = another_set.MakeHPolyhedron()
+        else:
+            hpoly2 = another_set
+
+        hpoly = hpoly1.Intersection(hpoly2, check_for_redundancy=True)
+        return get_set_membership_inequalities(x, hpoly)

@@ -88,6 +88,8 @@ class ProgramOptions:
         self.policy_use_target_condition_only = False
 
         self.num_simulated_cores = 16
+
+        self.right_point_inside_intersection = False
         
 
         # ----------------------------------

@@ -218,6 +218,9 @@ def solve_parallelized_convex_restriction(
             else:
                 edge = graph.edges[get_edge_name(vertex_path[i - 1].name, vertex.name)]
 
+                if options.right_point_inside_intersection:
+                    add_set_membership(prog, edge.left.convex_set, x, True)
+
                 u = None if edge.u is None else prog.NewContinuousVariables(len(edge.u))
                 edge_variable_trajectory.append(u)
                 if edge.u_bounding_set is not None:

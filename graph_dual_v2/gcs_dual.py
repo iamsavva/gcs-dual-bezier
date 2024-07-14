@@ -72,6 +72,7 @@ from polynomial_dual_gcs_utils import (
     define_sos_constraint_over_polyhedron_multivar_new,
     make_potential,
     get_set_membership_inequalities,
+    get_set_intersection_inequalities,
     # define_general_nonnegativity_constraint_on_a_set
 )
 # from graph_dual import DualVertex, DualEdge, PolynomialDualGCS
@@ -384,8 +385,11 @@ class DualEdge:
             if self.left.name == self.right.name:
                 rv_linear_inequalities, rv_quadratic_inequalities = get_set_membership_inequalities(right_vars, self.right.convex_set)
             else:
-                rv_linear_inequalities = self.right.vertex_set_linear_inequalities
-                rv_quadratic_inequalities = self.right.vertex_set_quadratic_inequalities
+                if self.options.right_point_inside_intersection:
+                    rv_linear_inequalities, rv_quadratic_inequalities = get_set_intersection_inequalities(right_vars, self.left.convex_set, self.right.convex_set)
+                else:
+                    rv_linear_inequalities = self.right.vertex_set_linear_inequalities
+                    rv_quadratic_inequalities = self.right.vertex_set_quadratic_inequalities
             if len(rv_linear_inequalities) > 0:
                 all_linear_inequalities.append(rv_linear_inequalities)
             if len(rv_quadratic_inequalities) > 0:
