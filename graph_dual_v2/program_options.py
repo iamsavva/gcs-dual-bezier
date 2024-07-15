@@ -94,6 +94,8 @@ class ProgramOptions:
 
         self.use_add_sos_constraint = True
 
+        self.dont_do_goal_conditioning = False
+
         # ----------------------------------
         # these should probably be depricated
         # ----------------------------------

@@ -173,6 +173,8 @@ class DualVertex:
             self.total_flow_in_violation = Expression(0)
             self.total_flow_in_violation_mat = np.zeros((self.state_dim+1,self.state_dim+1))
         else:
+            if self.options.dont_do_goal_conditioning:
+                assert self.options.flow_violation_polynomial_degree == 0, "not doing goal conditioning -- flow violation poly degree must be 0"
             if self.options.flow_violation_polynomial_degree not in (0,2):
                 raise Exception("bad vilation polynomial degree " + str(self.options.flow_violation_polynomial_degree))
             self.total_flow_in_violation, self.total_flow_in_violation_mat = make_potential(self.xt, PSD_POLY, self.options.flow_violation_polynomial_degree, prog)
@@ -188,6 +190,8 @@ class DualVertex:
             assert self.target_policy_terminating_condition is None, "passed target box width why"
 
         if self.vertex_is_target:
+            if self.options.dont_do_goal_conditioning:
+                assert target_cost_matrix is not None, "not necessary, but i am simplifying for now"
             if target_cost_matrix is not None:
                 assert target_cost_matrix.shape == (2*self.state_dim+1, 2*self.state_dim+1), "bad shape for forced J matrix"
                 self.J_matrix = target_cost_matrix
@@ -198,7 +202,7 @@ class DualVertex:
                 x_and_xt_and_1 = np.hstack(([1], self.x, self.xt))
                 self.potential = np.sum( self.J_matrix * np.outer(x_and_xt_and_1, x_and_xt_and_1))
         else:
-            if self.target_set_type is Point:
+            if self.target_set_type is Point or self.options.dont_do_goal_conditioning:
                 _, J_mat_vars = make_potential(self.x, self.options.pot_type, self.options.potential_poly_deg, prog)
                 self.J_matrix = block_diag(J_mat_vars, np.zeros((self.state_dim,self.state_dim)))
                 x_and_xt_and_1 = np.hstack(([1], self.x, self.xt))
@@ -217,6 +221,8 @@ class DualVertex:
         """
         if xt is None and self.target_set_type is Point:
             xt = self.target_convex_set.x()
+        if self.options.dont_do_goal_conditioning:
+            xt = np.zeros(self.state_dim)
         assert xt is not None, "did not pass xt to get the cost-to-go, when xt is non-unique"
         assert len(x) == self.state_dim
         assert len(xt) == self.state_dim
@@ -224,9 +230,10 @@ class DualVertex:
         if point_must_be_in_set:
             prog = MathematicalProgram()
             x_var = prog.NewContinuousVariables(self.state_dim)
-            xt_var = prog.NewContinuousVariables(self.state_dim)
             add_set_membership(prog, self.convex_set, x_var, True)
-            add_set_membership(prog, self.target_convex_set, xt_var, True)
+            if not self.options.dont_do_goal_conditioning:
+                xt_var = prog.NewContinuousVariables(self.state_dim)
+                add_set_membership(prog, self.target_convex_set, xt_var, True)
             solution = Solve(prog)
             assert solution.is_success(), "getting cost-to-go for a point that's not in the set"
 
@@ -244,7 +251,7 @@ class DualVertex:
         # assert verify_necessary_conditions_for_moments_supported_on_set(vertex_moments, self.convex_set), "moment matrix does not satisfy necessary SDP conditions for being supported on vertexsets"
         # assert verify_necessary_conditions_for_moments_supported_on_set(target_moments, self.target_convex_set), "targetmoment matrix does not satisfy necessary SDP conditions for being supported on target set"
 
-        moment_matrix = make_product_of_indepent_moment_matrices(vertex_moments,target_moments )
+        moment_matrix = make_product_of_indepent_moment_matrices(vertex_moments, target_moments)
         prog.AddLinearCost(-np.sum(self.J_matrix * moment_matrix))
 
 
@@ -286,6 +293,8 @@ class DualEdge:
         equality_constraints = []
 
         xl, xr, xt = self.left.x, self.right.x, self.left.xt
+        if self.options.dont_do_goal_conditioning:
+            xt = np.zeros(self.left.target_convex_set.ambient_dimension())
         if self.left.name == self.right.name:
             self.temp_right_indet = prog.NewIndeterminates(len(self.right.x))
             xr = self.temp_right_indet
@@ -359,6 +368,7 @@ class DualEdge:
         # need an equality constraint instead, x_right will be subsituted
         if self.right.set_type is Point and len(self.groebner_basis_equality_evaluators) > 0:
             assert False, "can't have right vertex be a point AND have dynamics constraints; put dynamics as an equality constraint instead."
+            # make a small box; add 
 
         if self.right.set_type is Point:
             # right vertex is a point -- substitutions
@@ -395,26 +405,29 @@ class DualEdge:
                 all_quadratic_inequalities.append(rv_quadratic_inequalities)
 
         # handle target vertex
-        if self.right.target_set_type is Point:
-            # right vertex is a point -- substitutions
-            for i, xt_i in enumerate(self.left.xt):
-                substitutions[xt_i] = self.left.target_convex_set.x()[i]
-        elif self.right.vertex_is_target:
-            # right vertex is target: put subsitutions on target variables too
-            for i, xt_i in enumerate(self.right.xt):
-                if right_vars[i] in substitutions:
-                    substitutions[xt_i] = substitutions[right_vars[i]]
-                else:
-                    substitutions[xt_i] = right_vars[i]
-        else:
-            unique_variables.append(self.right.xt)
-            if len(self.right.target_set_linear_inequalities) > 0:
-                all_linear_inequalities.append(self.right.target_set_linear_inequalities)
-            if len(self.right.target_set_quadratic_inequalities) > 0:
-                all_quadratic_inequalities.append(self.right.target_set_quadratic_inequalities)
+        if not self.options.dont_do_goal_conditioning:
 
+            if self.right.target_set_type is Point:
+                # right vertex is a point -- substitutions
+                for i, xt_i in enumerate(self.left.xt):
+                    substitutions[xt_i] = self.left.target_convex_set.x()[i]
+            elif self.right.vertex_is_target:
+                # right vertex is target: put subsitutions on target variables too
+                for i, xt_i in enumerate(self.right.xt):
+                    if right_vars[i] in substitutions:
+                        substitutions[xt_i] = substitutions[right_vars[i]]
+                    else:
+                        substitutions[xt_i] = right_vars[i]
+            else:
+                unique_variables.append(self.right.xt)
+                if len(self.right.target_set_linear_inequalities) > 0:
+                    all_linear_inequalities.append(self.right.target_set_linear_inequalities)
+                if len(self.right.target_set_quadratic_inequalities) > 0:
+                    all_quadratic_inequalities.append(self.right.target_set_quadratic_inequalities)
 
         xt_vars_subed = np.array([substitutions[x] if x in substitutions else x for x in self.left.xt ])
+        if self.options.dont_do_goal_conditioning:
+            xt_vars_subed = np.zeros(self.left.target_convex_set.ambient_dimension())
         xr_vars_subed = np.array([substitutions[x] if x in substitutions else x for x in right_vars ])
         edge_cost = self.cost_function_surrogate(self.left.x, self.u, xr_vars_subed, xt_vars_subed)
         left_potential = self.left.potential
@@ -443,11 +456,17 @@ class DualEdge:
         #     + self.right.total_flow_in_violation
         # )
 
+        unique_vars = Variables(np.hstack(unique_variables).flatten())
+        if self.options.dont_do_goal_conditioning:
+            expr_vars = expr.GetVariables()
+            for x in self.left.xt:
+                assert x not in unique_vars, "why xt in unique variables"
+                assert x not in expr_vars, "why xt in expression"
 
-        print("num_unique_vars", len(np.hstack(unique_variables).flatten()))
+        print("num_unique_vars", len(unique_vars))
         define_sos_constraint_over_polyhedron_multivar_new(
             prog,
-            Variables(np.hstack(unique_variables).flatten()),
+            unique_vars,
             all_linear_inequalities,
             all_quadratic_inequalities,
             edge_equality_constraints,
@@ -458,7 +477,12 @@ class DualEdge:
 
 
 class PolynomialDualGCS:
-    def __init__(self, options: ProgramOptions, target_convex_set:ConvexSet, target_cost_matrix:npt.NDArray = None, target_policy_terminating_condition:ConvexSet=None):
+    def __init__(self, 
+                 options: ProgramOptions, 
+                 target_convex_set:ConvexSet, 
+                 target_cost_matrix:npt.NDArray = None, 
+                 target_policy_terminating_condition:ConvexSet=None,
+                 ):
         # variables creates for policy synthesis
         self.vertices = dict()  # type: T.Dict[str, DualVertex]
         self.edges = dict()  # type: T.Dict[str, DualEdge]
@@ -468,6 +492,10 @@ class PolynomialDualGCS:
         self.push_up_vertices = [] # type: T.List[T.Tuple[str, npt.NDArray, npt.NDArray]]
 
         self.bidir_flow_violation_matrices = []
+
+        if options.dont_do_goal_conditioning:
+            assert target_policy_terminating_condition is None, "not doing goal conditioning but terminaing conditioned passed"
+            assert options.policy_use_target_condition_only is False
 
         self.target_convex_set = target_convex_set
         self.target_moment_matrix = get_moment_matrix_for_a_measure_over_set(target_convex_set)

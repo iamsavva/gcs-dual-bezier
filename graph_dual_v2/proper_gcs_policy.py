@@ -138,8 +138,11 @@ def get_k_step_optimal_path(
         options = graph.options
 
     if target_state is None:
-        assert vertex.target_set_type is Point, "target set not passed when target set not a point"
-        target_state = vertex.target_convex_set.x()
+        if options.dont_do_goal_conditioning:
+            target_state = np.zeros(vertex.state_dim)
+        else:
+            assert vertex.target_set_type is Point, "target set not passed when target set not a point"
+            target_state = vertex.target_convex_set.x()
 
     # get all possible n-step paths from current vertex -- with or without revisits
     if options.allow_vertex_revisits:
@@ -217,8 +220,11 @@ def get_lookahead_cost(
     graph.options.policy_lookahead = lookahead
     options.vertify_options_validity()
     if target_state is None:
-        assert vertex.target_set_type is Point, "target set not passed when target set not a point"
-        target_state = vertex.target_convex_set.x()
+        if options.dont_do_goal_conditioning:
+            target_state = np.zeros(vertex.state_dim)
+        else:
+            assert vertex.target_set_type is Point, "target set not passed when target set not a point"
+            target_state = vertex.target_convex_set.x()
 
     # use a k-step lookahead to obtain optimal k-step lookahead path
     return get_k_step_optimal_path(
@@ -246,8 +252,11 @@ def lookahead_policy(
     options.vertify_options_validity()
 
     if target_state is None:
-        assert vertex.target_set_type is Point, "target set not passed when target set not a point"
-        target_state = vertex.target_convex_set.x()
+        if options.dont_do_goal_conditioning:
+            target_state = np.zeros(vertex.state_dim)
+        else:
+            assert vertex.target_set_type is Point, "target set not passed when target set not a point"
+            target_state = vertex.target_convex_set.x()
 
     current_solution = RestrictionSolution([initial_state], [vertex], [])
 
@@ -301,8 +310,11 @@ def lookahead_with_backtracking_policy(
     options.vertify_options_validity()
 
     if target_state is None:
-        assert vertex.target_set_type is Point, "target set not passed when target set not a point"
-        target_state = vertex.target_convex_set.x()
+        if options.dont_do_goal_conditioning:
+            target_state = np.zeros(vertex.state_dim)
+        else:
+            assert vertex.target_set_type is Point, "target set not passed when target set not a point"
+            target_state = vertex.target_convex_set.x()
 
     # cost, current state, last state, current vertex, state path so far, vertex path so far
     decision_options = [ PriorityQueue() ]
@@ -411,8 +423,11 @@ def cheap_a_star_policy(
     options.vertify_options_validity()
 
     if target_state is None:
-        assert vertex.target_set_type is Point, "target set not passed when target set not a point"
-        target_state = vertex.target_convex_set.x()
+        if options.dont_do_goal_conditioning:
+            target_state = np.zeros(vertex.state_dim)
+        else:
+            assert vertex.target_set_type is Point, "target set not passed when target set not a point"
+            target_state = vertex.target_convex_set.x()
 
     # cost, current state, last state, current vertex, state path so far, vertex path so far
     que = PriorityQueue()
@@ -493,8 +508,11 @@ def cheap_a_star_policy_parallelized(
     num_times_solved_convex_restriction = 0
 
     if target_state is None:
-        assert vertex.target_set_type is Point, "target set not passed when target set not a point"
-        target_state = vertex.target_convex_set.x()
+        if options.dont_do_goal_conditioning:
+            target_state = np.zeros(vertex.state_dim)
+        else:
+            assert vertex.target_set_type is Point, "target set not passed when target set not a point"
+            target_state = vertex.target_convex_set.x()
 
 
     found_target = False
@@ -558,8 +576,11 @@ def obtain_rollout(
     graph.options.vertify_options_validity()
 
     if target_state is None:
-        assert vertex.target_set_type is Point, "target set not passed when target set not a point"
-        target_state = vertex.target_convex_set.x()
+        if options.dont_do_goal_conditioning:
+            target_state = np.zeros(vertex.state_dim)
+        else:
+            assert vertex.target_set_type is Point, "target set not passed when target set not a point"
+            target_state = vertex.target_convex_set.x()
     
 
     timer = timeit()
@@ -668,8 +689,11 @@ def plot_optimal(
     options.vertify_options_validity()
 
     if target_state is None:
-        assert vertex.target_set_type is Point, "target set not passed into plot rollout when target set not a point"
-        target_state = vertex.target_convex_set.x()
+        if options.dont_do_goal_conditioning:
+            target_state = np.zeros(vertex.state_dim)
+        else:
+            assert vertex.target_set_type is Point, "target set not passed when target set not a point"
+            target_state = vertex.target_convex_set.x()
 
     optimal_dt, _, optimal_path, optimal_v_path = get_optimal_path(graph, vertex, state, options, target_state)
     if verbose_comparison:
@@ -707,8 +731,11 @@ def plot_rollout(
     options.vertify_options_validity()
 
     if target_state is None:
-        assert vertex.target_set_type is Point, "target set not passed into plot rollout when target set not a point"
-        target_state = vertex.target_convex_set.x()
+        if options.dont_do_goal_conditioning:
+            target_state = np.zeros(vertex.state_dim)
+        else:
+            assert vertex.target_set_type is Point, "target set not passed when target set not a point"
+            target_state = vertex.target_convex_set.x()
     
     restriction, dt = obtain_rollout(graph, lookahead, vertex, state, target_state)
 

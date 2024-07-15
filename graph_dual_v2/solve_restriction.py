@@ -114,8 +114,11 @@ class RestrictionSolution:
         Note: this is cost of the full path with the target cost
         """
         if target_state is None:
-            assert isinstance(graph.target_convex_set, Point), "target set not passed when target set not a point"
-            target_state = graph.target_convex_set.x()
+            if graph.options.dont_do_goal_conditioning:
+                target_state = np.zeros(graph.target_convex_set.ambient_dimension())
+            else:
+                assert isinstance(graph.target_convex_set, Point), "target set not passed when target set not a point"
+                target_state = graph.target_convex_set.x()
 
         cost = 0.0
         for index in range(len(self.trajectory)-1):
@@ -185,9 +188,13 @@ def solve_parallelized_convex_restriction(
     
     if options is None:
         options = graph.options
+
     if target_state is None:
-        assert isinstance(graph.target_convex_set, Point), "target set not passed when target set not a point"
-        target_state = graph.target_convex_set.x()
+        if options.dont_do_goal_conditioning:
+            target_state = np.zeros(graph.target_convex_set.ambient_dimension())
+        else:
+            assert isinstance(graph.target_convex_set, Point), "target set not passed when target set not a point"
+            target_state = graph.target_convex_set.x()
 
     # construct an optimization problem
     prog = MathematicalProgram()
@@ -205,12 +212,18 @@ def solve_parallelized_convex_restriction(
             x = prog.NewContinuousVariables(vertex.state_dim, "x"+str(i))
             vertex_trajectory.append(x)
 
-            if not (vertex.vertex_is_target and options.policy_use_target_condition_only and vertex.target_policy_terminating_condition is not None):
+            if not vertex.vertex_is_target:
                 add_set_membership(prog, vertex.convex_set, x, True)
             else:
-                terminating_condition = recenter_convex_set(vertex.target_policy_terminating_condition, target_state)
-                add_set_membership(prog, terminating_condition, x, True)
-                # add_set_membership(prog, vertex.convex_set, x, True)
+                if options.dont_do_goal_conditioning:
+                    add_set_membership(prog, vertex.convex_set, x, True)
+                else:
+                    if vertex.target_policy_terminating_condition is None:
+                        prog.AddLinearConstraint( eq(x, target_state)) 
+                    else:
+                        terminating_condition = recenter_convex_set(vertex.target_policy_terminating_condition, target_state)
+                        add_set_membership(prog, terminating_condition, x, True)
+
             if i == 0:
                 # print(i, "lin con",  eq(x, state_now))
                 prog.AddLinearConstraint( eq(x, state_now))
@@ -247,12 +260,6 @@ def solve_parallelized_convex_restriction(
                 if not options.policy_use_zero_heuristic:
                     cost = vertex.get_cost_to_go_at_point(x, target_state)
                     prog.AddCost(cost)
-                if vertex.vertex_is_target:
-                    if vertex.target_policy_terminating_condition is None:
-                        prog.AddLinearConstraint( eq(x, target_state)) 
-                    else:
-                        terminating_condition = recenter_convex_set(vertex.target_policy_terminating_condition, target_state)
-                        add_set_membership(prog, terminating_condition, x, True)
 
         vertex_trajectories.append(vertex_trajectory)
         edge_variable_trajectories.append(edge_variable_trajectory)

@@ -303,7 +303,10 @@ def define_sos_constraint_over_polyhedron_multivar_new(
         lambda_eq = make_multipliers(deg, len(equality_constraints), False)
         s_procedure += equality_constraints.dot(lambda_eq)
 
-    expr = Polynomial(function - s_procedure) # type: Expression
+
+
+    expr = Polynomial(function - s_procedure, all_variables) # type: Expression
+
 
     if options.use_add_sos_constraint:
         prog.AddSosConstraint(expr)
