@@ -92,6 +92,8 @@ class ProgramOptions:
         self.right_point_inside_intersection = False
         
 
+        self.use_add_sos_constraint = True
+
         # ----------------------------------
         # these should probably be depricated
         # ----------------------------------

@@ -85,6 +85,7 @@ from util_moments import (
     verify_necessary_conditions_for_moments_supported_on_set,
 )
 
+from tqdm import tqdm
 # delta = 0.001
 # QUADRATIC_COST = lambda xl, u, xr, , z: np.sum([(x[i] - y[i]) ** 2 for i in range(len(x))])
 # QUADRATIC_COST_AUGMENTED = lambda x, y, z: np.sum(
@@ -319,7 +320,7 @@ class DualEdge:
         # what's happening?
         # i am trying to produce a list of unique variables that are necessary
         # and a list of substitutions
-
+        
         right_vars = self.right.x
         if self.left.name == self.right.name:
             right_vars = self.temp_right_indet
@@ -348,14 +349,12 @@ class DualEdge:
                 if len(u_quad_ineq) > 0:
                     all_quadratic_inequalities.append(u_quad_ineq)
 
-            
         if len(edge_linear_inequality_constraints) > 0:
             all_linear_inequalities.append(edge_linear_inequality_constraints)
         if len(edge_quadratic_inequality_constraints) > 0:
             all_quadratic_inequalities.append(edge_quadratic_inequality_constraints)
 
         # handle right vertex
-
         # can't have right vertex be a point and dynamics constraint, dunno how to substitute.
         # need an equality constraint instead, x_right will be subsituted
         if self.right.set_type is Point and len(self.groebner_basis_equality_evaluators) > 0:
@@ -414,13 +413,13 @@ class DualEdge:
             if len(self.right.target_set_quadratic_inequalities) > 0:
                 all_quadratic_inequalities.append(self.right.target_set_quadratic_inequalities)
 
-        edge_cost = self.cost_function_surrogate(self.left.x, self.u, right_vars, self.left.xt)
+
+        xt_vars_subed = np.array([substitutions[x] if x in substitutions else x for x in self.left.xt ])
+        xr_vars_subed = np.array([substitutions[x] if x in substitutions else x for x in right_vars ])
+        edge_cost = self.cost_function_surrogate(self.left.x, self.u, xr_vars_subed, xt_vars_subed)
         left_potential = self.left.potential
-        if self.left.name == self.right.name:
-            x_and_xt_and_1 = np.hstack(([1], right_vars, self.right.xt))
-            right_potential = np.sum(self.right.J_matrix * np.outer(x_and_xt_and_1, x_and_xt_and_1))
-        else:
-            right_potential = self.right.potential
+        x_and_xt_and_1 = np.hstack(([1], xr_vars_subed, xt_vars_subed))
+        right_potential = np.sum(self.right.J_matrix * np.outer(x_and_xt_and_1, x_and_xt_and_1))
         expr = (
             edge_cost
             + right_potential
@@ -429,6 +428,23 @@ class DualEdge:
             + self.right.total_flow_in_violation
         )
 
+        # edge_cost = self.cost_function_surrogate(self.left.x, self.u, right_vars, self.left.xt)
+        # left_potential = self.left.potential
+        # if self.left.name == self.right.name:
+        #     x_and_xt_and_1 = np.hstack(([1], right_vars, self.right.xt))
+        #     right_potential = np.sum(self.right.J_matrix * np.outer(x_and_xt_and_1, x_and_xt_and_1))
+        # else:
+        #     right_potential = self.right.potential
+        # expr = (
+        #     edge_cost
+        #     + right_potential
+        #     - left_potential
+        #     + self.bidirectional_edge_violation
+        #     + self.right.total_flow_in_violation
+        # )
+
+
+        print("num_unique_vars", len(np.hstack(unique_variables).flatten()))
         define_sos_constraint_over_polyhedron_multivar_new(
             prog,
             Variables(np.hstack(unique_variables).flatten()),
@@ -507,7 +523,8 @@ class PolynomialDualGCS:
         self.push_up_vertices.append((vertex.name, vertex_moments, target_vertex_moments))
 
     def BuildTheProgram(self):
-        for (v_name, v_moments, vt_moments) in self.push_up_vertices:
+        INFO("pushing up")
+        for (v_name, v_moments, vt_moments) in tqdm(self.push_up_vertices):
             self.vertices[v_name].push_up_on_potentials(self.prog, v_moments, vt_moments)
 
             if not self.options.allow_vertex_revisits:
@@ -518,8 +535,8 @@ class PolynomialDualGCS:
                 for mat in self.bidir_flow_violation_matrices:
                     self.prog.AddLinearCost( np.sum(mat * vt_moments))
 
-        # if not self.options.allow_vertex_revisits:
-        for edge in self.edges.values():
+        INFO("adding edge polynomial constraints")
+        for edge in tqdm(self.edges.values()):
             edge.define_edge_polynomials_and_sos_constraints(self.prog)
 
     def AddBidirectionalEdges(

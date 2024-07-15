@@ -211,7 +211,6 @@ def solve_parallelized_convex_restriction(
                 terminating_condition = recenter_convex_set(vertex.target_policy_terminating_condition, target_state)
                 add_set_membership(prog, terminating_condition, x, True)
                 # add_set_membership(prog, vertex.convex_set, x, True)
-
             if i == 0:
                 # print(i, "lin con",  eq(x, state_now))
                 prog.AddLinearConstraint( eq(x, state_now))
@@ -219,7 +218,7 @@ def solve_parallelized_convex_restriction(
                 edge = graph.edges[get_edge_name(vertex_path[i - 1].name, vertex.name)]
 
                 if options.right_point_inside_intersection:
-                    add_set_membership(prog, edge.left.convex_set, x, True)
+                    add_set_membership(prog, edge.left.conve, x, True)
 
                 u = None if edge.u is None else prog.NewContinuousVariables(len(edge.u))
                 edge_variable_trajectory.append(u)

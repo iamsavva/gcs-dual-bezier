@@ -69,7 +69,7 @@ def get_moment_matrix_for_a_measure_over_set(convex_set: ConvexSet):
         assert False, "bad set in get_moment_matrix_for_a_measure_over_set"
     mu = ellipsoid.center()
     sigma = np.linalg.inv(ellipsoid.A().T.dot(ellipsoid.A()))
-    print(np.linalg.eigvals(sigma))
+    # print(np.linalg.eigvals(sigma))
     return make_moment_matrix(1, mu, sigma + np.outer(mu,mu))
     
 def make_product_of_indepent_moment_matrices(moment_mat1:npt.NDArray, moment_mat2:npt.NDArray):
