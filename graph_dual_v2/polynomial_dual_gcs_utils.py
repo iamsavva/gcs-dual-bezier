@@ -43,6 +43,8 @@ from plotly.express.colors import sample_colorscale  # pylint: disable=import-er
 import plotly.graph_objs as go
 from plotly.subplots import make_subplots
 
+from tqdm import tqdm
+
 from program_options import FREE_POLY, PSD_POLY, CONVEX_POLY, ProgramOptions
 
 from util import (
@@ -230,8 +232,6 @@ def make_potential(indet_list: npt.NDArray, pot_type:str, poly_deg:int, prog: Ma
 #     expr = function - s_procedure
 #     prog.AddSosConstraint(expr)
 
-from tqdm import tqdm
-
 
 def define_sos_constraint_over_polyhedron_multivar_new(
     prog: MathematicalProgram,
@@ -265,14 +265,14 @@ def define_sos_constraint_over_polyhedron_multivar_new(
     quadratic_inequalities = np.hstack(quadratic_inequalities) if len(quadratic_inequalities) > 0 else np.array(quadratic_inequalities)
     equality_constraints = np.hstack(equality_constraints) if len(equality_constraints) > 0 else np.array(equality_constraints)
 
-    for i in range(len(linear_inequalities)):
-        linear_inequalities[i] = linear_inequalities[i].Substitute(subsitution_dictionary)
+    # for i in range(len(linear_inequalities)):
+    #     linear_inequalities[i] = linear_inequalities[i].Substitute(subsitution_dictionary)
 
-    for i in range(len(quadratic_inequalities)):
-        quadratic_inequalities[i] = quadratic_inequalities[i].Substitute(subsitution_dictionary)
+    # for i in range(len(quadratic_inequalities)):
+    #     quadratic_inequalities[i] = quadratic_inequalities[i].Substitute(subsitution_dictionary)
     
-    for i in range(len(equality_constraints)):
-        equality_constraints[i] = equality_constraints[i].Substitute(subsitution_dictionary)
+    # for i in range(len(equality_constraints)):
+    #     equality_constraints[i] = equality_constraints[i].Substitute(subsitution_dictionary)
 
 
     s_procedure = Expression(0)
@@ -304,9 +304,10 @@ def define_sos_constraint_over_polyhedron_multivar_new(
         s_procedure += equality_constraints.dot(lambda_eq)
 
 
+    expr = (function - s_procedure).Substitute(subsitution_dictionary)
+    expr = Polynomial(expr)
 
-    expr = Polynomial(function - s_procedure, all_variables) # type: Expression
-
+    # expr = Polynomial(function - s_procedure, all_variables) # type: Expression
 
     if options.use_add_sos_constraint:
         prog.AddSosConstraint(expr)

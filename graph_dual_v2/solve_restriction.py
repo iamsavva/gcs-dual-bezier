@@ -214,24 +214,37 @@ def solve_parallelized_convex_restriction(
             x = prog.NewContinuousVariables(vertex.state_dim, "x"+str(i))
             vertex_trajectory.append(x)
 
+            # if not vertex.vertex_is_target:
+            #     add_set_membership(prog, vertex.convex_set, x, True)
+            # else:
+            #     assert i == len(vertex_path) - 1, "something is fishy"
+                
+            #     if not options.policy_use_zero_heuristic:
+            #         cost = vertex.get_cost_to_go_at_point(x, target_state)
+            #         prog.AddCost(cost)
+
+            #     if options.dont_do_goal_conditioning:
+            #         add_set_membership(prog, vertex.convex_set, x, True)
+            #     else:
+            #         if options.relax_target_condition_during_rollout and not one_last_solve:
+            #             assert vertex.relaxed_target_condition_for_policy is not None
+            #             terminating_condition = recenter_convex_set(vertex.relaxed_target_condition_for_policy, target_state)
+            #             add_set_membership(prog, terminating_condition, x, True)
+            #         else:
+            #             prog.AddLinearConstraint( eq(x, target_state)) 
+
             if not vertex.vertex_is_target:
                 add_set_membership(prog, vertex.convex_set, x, True)
             else:
-                assert i == len(vertex_path) - 1, "something is fishy"
-
-                if not options.policy_use_zero_heuristic:
-                    cost = vertex.get_cost_to_go_at_point(x, target_state)
-                    prog.AddCost(cost)
-
                 if options.dont_do_goal_conditioning:
                     add_set_membership(prog, vertex.convex_set, x, True)
                 else:
-                    if options.relax_target_condition_during_rollout and not one_last_solve:
-                        assert vertex.relaxed_target_condition_for_policy is not None
+                    if vertex.relaxed_target_condition_for_policy is None:
+                        prog.AddLinearConstraint( eq(x, target_state)) 
+                    else:
                         terminating_condition = recenter_convex_set(vertex.relaxed_target_condition_for_policy, target_state)
                         add_set_membership(prog, terminating_condition, x, True)
-                    else:
-                        prog.AddLinearConstraint( eq(x, target_state)) 
+
 
             if i == 0:
                 prog.AddLinearConstraint( eq(x, state_now))
@@ -261,6 +274,13 @@ def solve_parallelized_convex_restriction(
                 # groebner bases related stuff
                 for evaluator in edge.groebner_basis_equality_evaluators:
                     prog.AddLinearConstraint(eq(evaluator(vertex_trajectory[i-1], u, x, target_state), 0))
+
+            if i == len(vertex_path) - 1:  
+                # if using target heuristic cost:
+                if not options.policy_use_zero_heuristic:
+                    cost = vertex.get_cost_to_go_at_point(x, target_state)
+                    prog.AddCost(cost)
+            
 
         vertex_trajectories.append(vertex_trajectory)
         edge_variable_trajectories.append(edge_variable_trajectory)
