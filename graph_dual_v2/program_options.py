@@ -67,7 +67,6 @@ class ProgramOptions:
         self.policy_verbose_choices = False
         self.policy_verbose_number_of_restrictions_solves = False
 
-
         # ----------------------------------
         # GCS policy related settings.
         # as of now, only used for computing optimal solutions.
@@ -85,7 +84,7 @@ class ProgramOptions:
 
         self.allow_vertex_revisits = False
 
-        self.policy_use_target_condition_only = False
+        self.relax_target_condition_during_rollout = False
 
         self.num_simulated_cores = 16
 

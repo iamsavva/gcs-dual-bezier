@@ -35,7 +35,7 @@ from pydrake.math import (  # pylint: disable=import-error, no-name-in-module, u
     le,
 )
 
-def plot_a_2d_graph(vertex_sets:T.List[ConvexSet], cheap_sets:T.List[int], height=800, width = 600, make_terminal_black=True, fill_color = "mintcream", font_size = 10, override_points_size=False, plot_points = False, point_size=10, s_offset=0.35, t_offset=0.35, plot_all_names=False):
+def plot_a_2d_graph(vertex_sets:T.List[ConvexSet], cheap_sets:T.List[int], height=800, width = 600, make_target_black=True, fill_color = "mintcream", font_size = 10, override_points_size=False, plot_points = False, point_size=10, s_offset=0.35, t_offset=0.35, plot_all_names=False):
     fig = go.Figure()
 
     def add_trace(convex_set:ConvexSet, v_name):
@@ -49,7 +49,7 @@ def plot_a_2d_graph(vertex_sets:T.List[ConvexSet], cheap_sets:T.List[int], heigh
             ys = np.append(vertices[1,:], vertices[1,0])
         elif isinstance(convex_set, Hyperellipsoid):
             mu = convex_set.center()
-            if override_points_size or (v_name == "t" and make_terminal_black):
+            if override_points_size or (v_name == "t" and make_target_black):
                 sigma = np.linalg.inv(np.eye(2)*point_size*point_size)
             else:
                 sigma = np.linalg.inv(convex_set.A().T.dot(convex_set.A()))
@@ -81,7 +81,7 @@ def plot_a_2d_graph(vertex_sets:T.List[ConvexSet], cheap_sets:T.List[int], heigh
             else:
                 fillcolor="#FFD6D7"
             
-            if v_name == "t" and make_terminal_black:
+            if v_name == "t" and make_target_black:
                 fillcolor = "black"
             fig.add_trace(
                 go.Scatter(

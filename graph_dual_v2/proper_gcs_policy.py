@@ -333,6 +333,7 @@ def lookahead_with_backtracking_policy(
             return None, None
         if decision_options[decision_index].empty():
             decision_index -= 1
+            # print("backtracking")
         else:
             node = decision_options[decision_index].get()[1] # type: RestrictionSolution
             # heuristic: don't ever consider a point you've already been in

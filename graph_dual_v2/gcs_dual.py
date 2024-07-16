@@ -47,6 +47,8 @@ from plotly.express.colors import sample_colorscale  # pylint: disable=import-er
 import plotly.graph_objs as go # pylint: disable=import-error
 from plotly.subplots import make_subplots # pylint: disable=import-error
 
+from tqdm import tqdm
+
 from program_options import FREE_POLY, PSD_POLY, CONVEX_POLY, ProgramOptions
 
 from util import (
@@ -85,12 +87,6 @@ from util_moments import (
     verify_necessary_conditions_for_moments_supported_on_set,
 )
 
-from tqdm import tqdm
-# delta = 0.001
-# QUADRATIC_COST = lambda xl, u, xr, , z: np.sum([(x[i] - y[i]) ** 2 for i in range(len(x))])
-# QUADRATIC_COST_AUGMENTED = lambda x, y, z: np.sum(
-#     [(x[i] - y[i]) ** 2 for i in range(len(x))]
-# ) + delta * 0.5* (np.sum([ (x[i]-z[i]) ** 2 + (y[i]-z[i]) ** 2 for i in range(len(x))]))
 
 
 class DualVertex:
@@ -104,7 +100,7 @@ class DualVertex:
         options: ProgramOptions,
         vertex_is_start: bool = False,
         vertex_is_target: bool = False,
-        target_policy_terminating_condition: ConvexSet = None,
+        relaxed_target_condition_for_policy: ConvexSet = None,
         target_cost_matrix: npt.NDArray = None,
     ):
         self.name = name
@@ -125,7 +121,7 @@ class DualVertex:
             raise Exception("bad state set")
         
         self.target_convex_set = target_convex_set
-        self.target_policy_terminating_condition = target_policy_terminating_condition
+        self.relaxed_target_condition_for_policy = relaxed_target_condition_for_policy
         self.target_set_type = type(target_convex_set)        
         # TODO: fix that, shouldn't need this technically
         assert convex_set.ambient_dimension() == target_convex_set.ambient_dimension(), "convex set and target set must have same ambient dimension"
@@ -187,7 +183,7 @@ class DualVertex:
     def define_potential(self, prog: MathematicalProgram, target_cost_matrix:npt.NDArray):
         if not self.vertex_is_target:
             assert target_cost_matrix is None, "passed a target cost matrix not a non-target vertex"
-            assert self.target_policy_terminating_condition is None, "passed target box width why"
+            assert self.relaxed_target_condition_for_policy is None, "passed target box width why"
 
         if self.vertex_is_target:
             if self.options.dont_do_goal_conditioning:
@@ -481,7 +477,7 @@ class PolynomialDualGCS:
                  options: ProgramOptions, 
                  target_convex_set:ConvexSet, 
                  target_cost_matrix:npt.NDArray = None, 
-                 target_policy_terminating_condition:ConvexSet=None,
+                 relaxed_target_condition_for_policy:ConvexSet=None,
                  ):
         # variables creates for policy synthesis
         self.vertices = dict()  # type: T.Dict[str, DualVertex]
@@ -494,8 +490,12 @@ class PolynomialDualGCS:
         self.bidir_flow_violation_matrices = []
 
         if options.dont_do_goal_conditioning:
-            assert target_policy_terminating_condition is None, "not doing goal conditioning but terminaing conditioned passed"
-            assert options.policy_use_target_condition_only is False
+            assert relaxed_target_condition_for_policy is None, "not doing goal conditioning but terminaing conditioned passed"
+            assert options.relax_target_condition_during_rollout is False
+        if options.relax_target_condition_during_rollout is False:
+            assert relaxed_target_condition_for_policy is None, "relaxed target condition not passed"
+        if relaxed_target_condition_for_policy is None:
+            assert options.relax_target_condition_during_rollout is False, "relaxed target condition passed but now relaxing"
 
         self.target_convex_set = target_convex_set
         self.target_moment_matrix = get_moment_matrix_for_a_measure_over_set(target_convex_set)
@@ -511,7 +511,7 @@ class PolynomialDualGCS:
             self.xt,
             options=options,
             vertex_is_target=True,
-            target_policy_terminating_condition=target_policy_terminating_condition,
+            relaxed_target_condition_for_policy=relaxed_target_condition_for_policy,
             target_cost_matrix=target_cost_matrix,
         )
         self.vertices["target"] = vt

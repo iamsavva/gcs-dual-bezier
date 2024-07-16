@@ -98,7 +98,7 @@ def make_a_rollout_sequence(graph_dict: T.Dict[str, PolynomialDualGCS],
     simulator.set_target_realtime_rate(1.0)
 
     index_now = 0
-    terminal_state_now = None
+    target_state_now = None
     source_state_now = None
 
     trajectory_distances = []
@@ -109,31 +109,31 @@ def make_a_rollout_sequence(graph_dict: T.Dict[str, PolynomialDualGCS],
     for index_now in tqdm(range(0, len(regions_names_list)-1)):
         if index_now % 2 == 0:
             source_name = regions_names_list[index_now+1]
-            terminal_name = regions_names_list[index_now]
+            target_name = regions_names_list[index_now]
             must_reverse_now = True
         else:
             source_name = regions_names_list[index_now]
-            terminal_name = regions_names_list[index_now+1]
+            target_name = regions_names_list[index_now+1]
             must_reverse_now = False
-        graph = graph_dict[terminal_name]
+        graph = graph_dict[target_name]
         source_vertex = graph.vertices[source_name]
-        terminal_vertex = graph.vertices[terminal_name]
+        target_vertex = graph.vertices[target_name]
 
         if index_now == 0:
-            assert terminal_state_now is None
-            terminal_state_now = terminal_vertex.convex_set.UniformSample(generator)
+            assert target_state_now is None
+            target_state_now = target_vertex.convex_set.UniformSample(generator)
 
-        if terminal_state_now is None:
-            terminal_state_now = terminal_vertex.convex_set.UniformSample(generator)
+        if target_state_now is None:
+            target_state_now = target_vertex.convex_set.UniformSample(generator)
         if source_state_now is None:
             source_state_now = source_vertex.convex_set.UniformSample(generator)
         
         if make_optimal:
-            solve_time, _, rollout, v_rollout = get_optimal_path(graph, source_vertex, source_state_now, terminal_state=terminal_state_now)
+            solve_time, _, rollout, v_rollout = get_optimal_path(graph, source_vertex, source_state_now, target_state=target_state_now)
         else:
-            rollout, v_rollout, solve_time = obtain_rollout(graph, 1, source_vertex, source_state_now, None, terminal_state=terminal_state_now)
+            rollout, v_rollout, solve_time = obtain_rollout(graph, 1, source_vertex, source_state_now, None, target_state=target_state_now)
 
-        rollout_cost = get_path_cost(graph, v_rollout, rollout, False, False, terminal_state=terminal_state_now)
+        rollout_cost = get_path_cost(graph, v_rollout, rollout, False, False, target_state=target_state_now)
 
         # reverse the trajectory if going back 
         if must_reverse_now:
@@ -146,7 +146,7 @@ def make_a_rollout_sequence(graph_dict: T.Dict[str, PolynomialDualGCS],
         trajectories.append(retimed_traj)
 
         if must_reverse_now:
-            terminal_state_now = None
+            target_state_now = None
         else:
             source_state_now = None
 
