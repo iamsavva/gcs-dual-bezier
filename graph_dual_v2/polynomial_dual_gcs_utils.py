@@ -265,14 +265,14 @@ def define_sos_constraint_over_polyhedron_multivar_new(
     quadratic_inequalities = np.hstack(quadratic_inequalities) if len(quadratic_inequalities) > 0 else np.array(quadratic_inequalities)
     equality_constraints = np.hstack(equality_constraints) if len(equality_constraints) > 0 else np.array(equality_constraints)
 
-    # for i in range(len(linear_inequalities)):
-    #     linear_inequalities[i] = linear_inequalities[i].Substitute(subsitution_dictionary)
+    for i in range(len(linear_inequalities)):
+        linear_inequalities[i] = linear_inequalities[i].Substitute(subsitution_dictionary)
 
-    # for i in range(len(quadratic_inequalities)):
-    #     quadratic_inequalities[i] = quadratic_inequalities[i].Substitute(subsitution_dictionary)
+    for i in range(len(quadratic_inequalities)):
+        quadratic_inequalities[i] = quadratic_inequalities[i].Substitute(subsitution_dictionary)
     
-    # for i in range(len(equality_constraints)):
-    #     equality_constraints[i] = equality_constraints[i].Substitute(subsitution_dictionary)
+    for i in range(len(equality_constraints)):
+        equality_constraints[i] = equality_constraints[i].Substitute(subsitution_dictionary)
 
 
     s_procedure = Expression(0)
@@ -304,16 +304,17 @@ def define_sos_constraint_over_polyhedron_multivar_new(
         s_procedure += equality_constraints.dot(lambda_eq)
 
 
-    expr = (function - s_procedure).Substitute(subsitution_dictionary)
-    expr = Polynomial(expr)
+    
+    expr = function.Substitute(subsitution_dictionary) - s_procedure
+    prog.AddSosConstraint(expr)
 
-    # expr = Polynomial(function - s_procedure, all_variables) # type: Expression
 
-    if options.use_add_sos_constraint:
-        prog.AddSosConstraint(expr)
-    else:
-        new_poly = prog.NewSosPolynomial(all_variables, 2)[0]
-        prog.AddEqualityConstraintBetweenPolynomials(expr, new_poly)
+    # expr = Polynomial(expr, all_variables)
+    # if options.use_add_sos_constraint:
+    #     prog.AddSosConstraint(expr)
+    # else:
+    #     new_poly = prog.NewSosPolynomial(all_variables, 2)[0]
+    #     prog.AddEqualityConstraintBetweenPolynomials(expr, new_poly)
 
 
 def get_set_membership_inequalities(x:npt.NDArray, convex_set:ConvexSet):
