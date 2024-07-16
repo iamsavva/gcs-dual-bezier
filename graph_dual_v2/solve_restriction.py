@@ -109,7 +109,9 @@ class RestrictionSolution:
                     self.edge_variable_trajectory + [next_edge_var]
                     )
 
-    def get_cost(self, graph:PolynomialDualGCS, use_surrogate: bool, add_target_heuristic:bool = True, target_state:npt.NDArray = None) -> float:
+    def get_cost(self, graph:PolynomialDualGCS, 
+                 use_surrogate: bool, 
+                 add_target_heuristic:bool = True, target_state:npt.NDArray = None) -> float:
         """
         Note: this is cost of the full path with the target cost
         """
@@ -231,7 +233,7 @@ def solve_parallelized_convex_restriction(
                 edge = graph.edges[get_edge_name(vertex_path[i - 1].name, vertex.name)]
 
                 if options.right_point_inside_intersection:
-                    add_set_membership(prog, edge.left.conve, x, True)
+                    add_set_membership(prog, edge.left.convex_set, x, True)
 
                 u = None if edge.u is None else prog.NewContinuousVariables(len(edge.u))
                 edge_variable_trajectory.append(u)
