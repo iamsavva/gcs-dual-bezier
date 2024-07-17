@@ -304,7 +304,7 @@ def lookahead_with_backtracking_policy(
     -- backtrack to the last state when some action was available.
     Returns a list of bezier curves. Each bezier curve is a list of control points (numpy arrays).
     """
-    INFO("running lookahead backtracking")
+    INFO("running lookahead backtracking", verbose = options.policy_verbose_choices)
     if options is None:
         options = graph.options
     options.vertify_options_validity()
@@ -335,7 +335,13 @@ def lookahead_with_backtracking_policy(
             decision_index -= 1
             # print("backtracking")
         else:
-            node = decision_options[decision_index].get()[1] # type: RestrictionSolution
+            (cost_of_this_node, node) = decision_options[decision_index].get() # type: T.Tuple[float, RestrictionSolution]
+
+            if node.vertex_now().vertex_is_target:
+                found_target = True
+                target_node = node
+                break
+
             # heuristic: don't ever consider a point you've already been in
             stop = False
             for point in node.trajectory[:-1]:
@@ -344,12 +350,6 @@ def lookahead_with_backtracking_policy(
                     break
             if stop:
                 continue
-            
-            print(node.vertex_now().name, np.round(node.point_now().flatten(),3))
-            if node.vertex_now().vertex_is_target:
-                found_target = True
-                target_node = node
-                break
 
             if len(decision_options) == decision_index + 1:
                 decision_options.append( PriorityQueue() )
@@ -378,13 +378,14 @@ def lookahead_with_backtracking_policy(
                 num_times_solved_convex_restriction += 1
                 if r_sol is not None:
                     add_target_heuristic = True
-                    next_node = node.extend(r_sol.trajectory[1], r_sol.edge_variable_trajectory[0], r_sol.vertex_path[1])
+                    next_node = node.extend(r_sol.trajectory[1], r_sol.edge_variable_trajectory[0], r_sol.vertex_path[1]) # type: RestrictionSolution
                     cost_of_que_node = r_sol.get_cost(graph, False, add_target_heuristic, target_state)
                     INFO(r_sol.vertex_names(), np.round(cost_of_que_node, 3), verbose=options.policy_verbose_choices)
-                    try:
-                        decision_options[decision_index + 1].put( (cost_of_que_node+np.random.uniform(0,1e-9), next_node ))
-                    except:
-                        WARN(cost_of_que_node, next_node)
+                    # try:
+                    decision_options[decision_index + 1].put( (cost_of_que_node+np.random.uniform(0,1e-9), next_node ))
+                    # except:
+                    #     WARN(cost_of_que_node, next_node)
+
             if len(solve_times) > 0:
                 num_parallel_solves = np.ceil(len(vertex_paths)/options.num_simulated_cores)
                 total_solver_time += np.max(solve_times)*num_parallel_solves
