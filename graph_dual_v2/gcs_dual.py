@@ -421,22 +421,6 @@ class DualEdge:
                 if len(self.right.target_set_quadratic_inequalities) > 0:
                     all_quadratic_inequalities.append(self.right.target_set_quadratic_inequalities)
 
-        # xt_vars_subed = np.array([substitutions[x] if x in substitutions else x for x in self.left.xt ])
-        # if self.options.dont_do_goal_conditioning:
-        #     xt_vars_subed = np.zeros(self.left.target_convex_set.ambient_dimension())
-        # xr_vars_subed = np.array([substitutions[x] if x in substitutions else x for x in right_vars ])
-        # edge_cost = self.cost_function_surrogate(self.left.x, self.u, xr_vars_subed, xt_vars_subed)
-        # left_potential = self.left.potential
-        # x_and_xt_and_1 = np.hstack(([1], xr_vars_subed, xt_vars_subed))
-        # right_potential = np.sum(self.right.J_matrix * np.outer(x_and_xt_and_1, x_and_xt_and_1))
-        # expr = (
-        #     edge_cost
-        #     + right_potential
-        #     - left_potential
-        #     + self.bidirectional_edge_violation
-        #     + self.right.total_flow_in_violation
-        # )
-
         edge_cost = self.cost_function_surrogate(self.left.x, self.u, right_vars, self.left.xt)
         left_potential = self.left.potential
         if self.left.name == self.right.name:
@@ -453,13 +437,6 @@ class DualEdge:
         )
 
         unique_vars = Variables(np.hstack(unique_variables).flatten())
-        # if self.options.dont_do_goal_conditioning:
-        #     expr_vars = expr.GetVariables()
-        #     for x in self.left.xt:
-        #         assert x not in unique_vars, "why xt in unique variables"
-        #         assert x not in expr_vars, "why xt in expression"
-
-        # TODO: fix goal conditioning stuff
 
         print("num_unique_vars", len(unique_vars))
         define_sos_constraint_over_polyhedron_multivar_new(
