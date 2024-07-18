@@ -222,7 +222,7 @@ def solve_parallelized_convex_restriction(
 
                 for evaluator in edge.linear_inequality_evaluators:
                     prog.AddLinearConstraint(ge(evaluator(vertex_trajectory[i-1], u, x, target_state), 0))
-                    
+
                 for evaluator in edge.equality_evaluators:
                     prog.AddLinearConstraint(eq(evaluator(vertex_trajectory[i-1], u, x, target_state), 0))
 
@@ -282,6 +282,11 @@ def solve_parallelized_convex_restriction(
             solver_options.SetOption(MosekSolver.id(), 
                                         "MSK_IPAR_INTPNT_SOLVE_FORM", 
                                         options.MSK_IPAR_INTPNT_SOLVE_FORM)
+            
+            if options.MSK_IPAR_OPTIMIZER is not None:
+                solver_options.SetOption(MosekSolver.id(), 
+                                            "MSK_IPAR_OPTIMIZER", 
+                                            options.MSK_IPAR_OPTIMIZER)
                 
             if options.policy_use_robust_mosek_params:
                 solver_options.SetOption(MosekSolver.id(), "MSK_DPAR_INTPNT_CO_TOL_REL_GAP", 1e-3)

@@ -61,6 +61,7 @@ class ProgramOptions:
         self.MSK_DPAR_INTPNT_TOL_INFEAS = 1e-6
         self.MSK_IPAR_PRESOLVE_USE = 1 # 0: use, 1: don't
         self.MSK_IPAR_INTPNT_SOLVE_FORM = 2 # 0: pick, 1: primal, 2: dual
+        self.MSK_IPAR_OPTIMIZER = None # free, intpnt, conic, primal_simplex, dual_simplex, free_simplex, mixed_int 
 
         self.policy_verbose_choices = False
         self.policy_verbose_number_of_restrictions_solves = False
