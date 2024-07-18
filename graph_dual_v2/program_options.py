@@ -46,10 +46,8 @@ class ProgramOptions:
 
         # ----------------------------------
         # specify the policy
-        self.use_lookahead_policy = False
         self.use_lookahead_with_backtracking_policy = False
         self.use_cheap_a_star_policy = False
-        self.use_cheap_a_star_policy_parallelized = False
         self.policy_use_zero_heuristic = False # if you wanna use Dijkstra instead
 
         # ----------------------------------
@@ -79,21 +77,24 @@ class ProgramOptions:
 
         self.flow_violation_polynomial_degree = 0
 
-        # self.backtracking_iteration_limit = 10000
-        self.forward_iteration_limit = 10000
+        self.forward_iteration_limit = 1000
 
         self.allow_vertex_revisits = False
 
         self.relax_target_condition_during_rollout = False
 
+        self.use_parallelized_solve_time_reporting = True
         self.num_simulated_cores = 16
 
-        self.right_point_inside_intersection = False
+        self.add_right_point_inside_intersection_constraint = False
         
-
-        self.use_add_sos_constraint = True
+        self.use_add_sos_constraint = True # set to true, better results that way
 
         self.dont_do_goal_conditioning = False
+
+        self.check_cost_to_go_at_point = False # set to False, faster rollout prog generation
+
+        
 
         # ----------------------------------
         # these should probably be depricated
@@ -109,7 +110,7 @@ class ProgramOptions:
             PSD_POLY,
             CONVEX_POLY,
         ), "undefined potentia type"
-        policy_options = np.array([self.use_lookahead_policy, self.use_lookahead_with_backtracking_policy, self.use_cheap_a_star_policy, self.use_cheap_a_star_policy_parallelized])
+        policy_options = np.array([self.use_lookahead_with_backtracking_policy, self.use_cheap_a_star_policy])
         assert not np.sum(policy_options) < 1, "must select policy lookahead option"
         assert not np.sum(policy_options) > 1, "selected multiple policy lookahead options"
 

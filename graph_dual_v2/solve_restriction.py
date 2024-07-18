@@ -134,40 +134,10 @@ class RestrictionSolution:
                 cost += edge.cost_function(x_v, u, x_v_1, target_state)
 
         if add_target_heuristic:
-            cost_to_go_at_last_point = self.vertex_path[-1].get_cost_to_go_at_point(self.trajectory[-1], target_state, True)
+            cost_to_go_at_last_point = self.vertex_path[-1].get_cost_to_go_at_point(self.trajectory[-1], target_state, graph.options.check_cost_to_go_at_point)
             cost += cost_to_go_at_last_point
         return cost
 
-
-# def get_path_cost(
-#     graph: PolynomialDualGCS,
-#     vertex_path: T.List[DualVertex],
-#     vertex_trajectory: T.List[npt.NDArray], # TODO: here -- have vertex / edge variables?
-#     use_surrogate: bool,
-#     add_target_heuristic:bool = True,
-#     target_state:npt.NDArray = None
-# ) -> float:
-#     """
-#     Note: this is cost of the full path with the target cost
-#     """
-#     if target_state is None:
-#         assert isinstance(graph.target_convex_set, Point), "target set not passed when target set not a point"
-#         target_state = graph.target_convex_set.x()
-
-#     cost = 0.0
-#     for index in range(len(vertex_trajectory)-1):
-#         edge = graph.edges[get_edge_name(vertex_path[index].name, vertex_path[index + 1].name)]
-#         x_v = vertex_trajectory[index]
-#         x_v_1 = vertex_trajectory[index+1]
-#         if use_surrogate:
-#             cost += edge.cost_function_surrogate(x_v, None, x_v_1, target_state)
-#         else:
-#             cost += edge.cost_function(x_v, None, x_v_1, target_state)
-
-#     if add_target_heuristic:
-#         cost_to_go_at_last_point = vertex_path[-1].get_cost_to_go_at_point(vertex_trajectory[-1], target_state, True)
-#         cost += cost_to_go_at_last_point
-#     return cost
 
 
 
@@ -175,7 +145,6 @@ def solve_parallelized_convex_restriction(
     graph: PolynomialDualGCS,
     vertex_paths: T.List[T.List[DualVertex]],
     state_now: npt.NDArray,
-    options: ProgramOptions = None,
     verbose_failure=True,
     target_state:npt.NDArray = None,
     one_last_solve:bool = False,
@@ -187,9 +156,7 @@ def solve_parallelized_convex_restriction(
     and return a list of bezier curves
     where bezier curve is a list of numpy arrays (vectors).
     """
-    
-    if options is None:
-        options = graph.options
+    options = graph.options
 
     if target_state is None:
         if options.dont_do_goal_conditioning:
@@ -231,15 +198,18 @@ def solve_parallelized_convex_restriction(
                         terminating_condition = recenter_convex_set(vertex.relaxed_target_condition_for_policy, target_state)
                         add_set_membership(prog, terminating_condition, x, True)
                     else:
-                        prog.AddLinearConstraint( eq(x, target_state)) 
+                        # prog.AddLinearConstraint( eq(x, target_state))
+                        # prog.AddLinearEqualityConstraint(np.eye(len(x)), target_state, x)
+                        prog.AddLinearEqualityConstraint(x, target_state)
 
 
             if i == 0:
-                prog.AddLinearConstraint( eq(x, state_now))
+                # prog.AddLinearConstraint( eq(x, state_now))
+                prog.AddLinearEqualityConstraint(x, state_now)
             else:
                 edge = graph.edges[get_edge_name(vertex_path[i - 1].name, vertex.name)]
 
-                if options.right_point_inside_intersection:
+                if options.add_right_point_inside_intersection_constraint:
                     add_set_membership(prog, edge.left.convex_set, x, True)
 
                 u = None if edge.u is None else prog.NewContinuousVariables(len(edge.u))
@@ -252,6 +222,7 @@ def solve_parallelized_convex_restriction(
 
                 for evaluator in edge.linear_inequality_evaluators:
                     prog.AddLinearConstraint(ge(evaluator(vertex_trajectory[i-1], u, x, target_state), 0))
+                    
                 for evaluator in edge.equality_evaluators:
                     prog.AddLinearConstraint(eq(evaluator(vertex_trajectory[i-1], u, x, target_state), 0))
 
@@ -266,7 +237,7 @@ def solve_parallelized_convex_restriction(
             # add heuristic cost on the last point
             if i == len(vertex_path) - 1:  
                 if not options.policy_use_zero_heuristic:
-                    cost = vertex.get_cost_to_go_at_point(x, target_state)
+                    cost = vertex.get_cost_to_go_at_point(x, target_state, options.check_cost_to_go_at_point)
                     prog.AddCost(cost)
             
 
@@ -331,6 +302,9 @@ def solve_parallelized_convex_restriction(
         solver_solve_time = solution.get_solver_details().solve_time
     elif options.policy_solver == GurobiSolver:
         solver_solve_time = solution.get_solver_details().optimizer_time
+    else:
+        WARN("don't know how to get solver time for the solver", solution.get_solver_id().name())
+        raise NotImplementedError()
 
     final_result = []
     if solution.is_success():
@@ -352,12 +326,11 @@ def solve_convex_restriction(
     graph: PolynomialDualGCS,
     vertex_path: T.List[DualVertex],
     state_now: npt.NDArray,
-    options: ProgramOptions = None,
     verbose_failure:bool =False,
     target_state:npt.NDArray = None,
     one_last_solve = False
 ) -> T.Tuple[RestrictionSolution, float]:
-    result, dt = solve_parallelized_convex_restriction(graph, [vertex_path], state_now, options, verbose_failure, target_state, one_last_solve, verbose_solve_success = False)
+    result, dt = solve_parallelized_convex_restriction(graph, [vertex_path], state_now, verbose_failure, target_state, one_last_solve, verbose_solve_success = False)
     if result is None:
         return None, dt
     else:
@@ -370,15 +343,13 @@ def get_optimal_path(
     graph: PolynomialDualGCS,
     vertex: DualVertex,
     state: npt.NDArray,
-    options: ProgramOptions = None,
     target_state:npt.NDArray = None
 ) -> T.Tuple[float, float, T.List[T.List[npt.NDArray]], T.List[DualVertex]]:
     """
     return (time, cost, bezier path, vertex path) of the optimal solution.
     """
     raise NotImplementedError("needs a rewrite for walks / paths / new constraints")
-    if options is None:
-        options = graph.options
+    options = graph.options
 
     if target_state is not None:
         gcs, vertices, pseudo_target_vertex = graph.export_a_gcs(target_state)

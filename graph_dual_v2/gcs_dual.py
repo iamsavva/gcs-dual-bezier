@@ -235,8 +235,10 @@ class DualVertex:
 
         assert self.J_matrix_solution is not None, "cost-to-go lower bounds have not been set yet"
 
+        # TODO: can save time here in a none-goal conditioned case by only taking product of necessary components
         x_and_xt_and_1 = np.hstack(([1], x, xt))
-        return np.sum( self.J_matrix_solution * np.outer(x_and_xt_and_1, x_and_xt_and_1))
+        # return np.sum( self.J_matrix_solution * np.outer(x_and_xt_and_1, x_and_xt_and_1)) # slower
+        return x_and_xt_and_1.dot(self.J_matrix_solution).dot(x_and_xt_and_1)
     
     def push_down_on_flow_violation(self, prog:MathematicalProgram, target_moment_matrix:npt.NDArray):
         # add the cost on violations
@@ -390,7 +392,7 @@ class DualEdge:
             if self.left.name == self.right.name:
                 rv_linear_inequalities, rv_quadratic_inequalities = get_set_membership_inequalities(right_vars, self.right.convex_set)
             else:
-                if self.options.right_point_inside_intersection:
+                if self.options.add_right_point_inside_intersection_constraint:
                     rv_linear_inequalities, rv_quadratic_inequalities = get_set_intersection_inequalities(right_vars, self.left.convex_set, self.right.convex_set)
                 else:
                     rv_linear_inequalities = self.right.vertex_set_linear_inequalities

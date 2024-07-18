@@ -216,10 +216,18 @@ def get_kth_control_point(bezier:npt.NDArray, k:int, num_control_points:int) -> 
 
 def add_set_membership(prog:MathematicalProgram, convex_set:ConvexSet, x:npt.NDArray, ellipsoid_as_lorentz=True) -> None:
     if isinstance(convex_set, HPolyhedron):
-        prog.AddLinearConstraint(le( convex_set.A().dot(x), convex_set.b()))
+        # prog.AddLinearConstraint(le( convex_set.A().dot(x), convex_set.b()))
+        prog.AddLinearConstraint(convex_set.A(),
+                                 -np.infty*np.ones( len(convex_set.b())), 
+                                 convex_set.b(), 
+                                 x)
     elif isinstance(convex_set, Hyperrectangle):
         hpoly = convex_set.MakeHPolyhedron()
-        prog.AddLinearConstraint(le( hpoly.A().dot(x), hpoly.b()))
+        # prog.AddLinearConstraint(le( hpoly.A().dot(x), hpoly.b()))
+        prog.AddLinearConstraint(hpoly.A(),
+                                 -np.infty*np.ones( len(hpoly.b())), 
+                                 hpoly.b(), 
+                                 x)
     elif isinstance(convex_set, Hyperellipsoid):
         A, c = convex_set.A(), convex_set.center()
         if ellipsoid_as_lorentz:
@@ -229,7 +237,9 @@ def add_set_membership(prog:MathematicalProgram, convex_set:ConvexSet, x:npt.NDA
         else:
             prog.AddQuadraticConstraint( (x-c).dot( A.T @ A ).dot(x-c),-np.inf, 1)
     elif isinstance(convex_set, Point):
-        prog.AddLinearConstraint(eq(x, convex_set.x()))
+        # prog.AddLinearConstraint(eq(x, convex_set.x()))
+        # prog.AddLinearEqualityConstraint(np.eye(len(x)),convex_set.x(), x)
+        prog.AddLinearEqualityConstraint(x, convex_set.x())
     else:
         assert False, "bad set in add_set_membership"
 
