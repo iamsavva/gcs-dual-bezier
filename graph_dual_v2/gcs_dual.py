@@ -48,6 +48,7 @@ import plotly.graph_objs as go # pylint: disable=import-error
 from plotly.subplots import make_subplots # pylint: disable=import-error
 
 from tqdm import tqdm
+import pickle
 
 from program_options import FREE_POLY, PSD_POLY, CONVEX_POLY, ProgramOptions
 
@@ -645,7 +646,24 @@ class PolynomialDualGCS:
 
         return self.value_function_solution
     
-    
+
+    def store_cost_to_go_functions(self, file_name:str):
+        assert self.value_function_solution is not None
+
+        solution_dictionary = dict()
+        for v_name, v in self.vertices.items():
+            solution_dictionary[v_name] = v.J_matrix_solution
+        
+        with open("./saved_policies/" + file_name + ".pkl", 'wb') as f:
+            pickle.dump(solution_dictionary, f)
+
+    def load_cost_to_go_functions(self, file_name:str):
+        with open("./saved_policies/" + file_name + ".pkl", 'rb') as f:
+            solution_dictionary = pickle.load(f)
+            for v_name, J_matrix_solution in solution_dictionary.items():
+                self.vertices[v_name].J_matrix_solution = J_matrix_solution
+                
+
     def export_a_gcs(self, target_state:npt.NDArray) -> T.Tuple[GraphOfConvexSets, T.Dict[str, GraphOfConvexSets.Vertex], GraphOfConvexSets.Vertex]:
         raise NotImplementedError("need to rewrite. in particular, troubles expected when walks are allowed.")
         gcs = GraphOfConvexSets()

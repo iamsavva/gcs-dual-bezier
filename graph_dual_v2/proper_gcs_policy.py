@@ -89,7 +89,6 @@ def get_all_n_step_paths(
                     vertex_expand_que.append((right_vertex, path + [right_vertex], lookahead - 1))
     return paths
 
-
 # implement policy without revisits
 def get_all_n_step_paths_no_revisits(
     graph: PolynomialDualGCS,
@@ -200,7 +199,8 @@ def postprocess_the_path(graph:PolynomialDualGCS,
         new_restriction = restriction
     timer.dt("one last solve", print_stuff = options.verbose_solve_times)
     return new_restriction, solver_time
-    
+
+
 def get_lookahead_cost(
     graph: PolynomialDualGCS,
     lookahead:int,
@@ -314,7 +314,6 @@ def lookahead_with_backtracking_policy(
         return None, total_solver_time
 
 
-
 def cheap_a_star_policy(
     graph: PolynomialDualGCS,
     vertex: DualVertex,
@@ -390,8 +389,7 @@ def cheap_a_star_policy(
     else:
         WARN("no path from start vertex to target!")
         return None, None
-    
-           
+               
 
 def obtain_rollout(
     graph: PolynomialDualGCS,
@@ -529,6 +527,7 @@ def plot_optimal(
     else:
         plot_bezier(fig, optimal_path, optimal_color, None, name=optimal_name,linewidth=linewidth, marker_size=marker_size, plot_start_point=plot_start_point, dotted=dotted, plot_start_target_only=plot_start_target_only)
     return True, optimal_dt
+
 
 def plot_rollout(
     fig: go.Figure,
