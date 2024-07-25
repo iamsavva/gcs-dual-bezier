@@ -370,55 +370,63 @@ def cheap_a_star_policy(
     # cost, current state, last state, current vertex, state path so far, vertex path so far
     que = PriorityQueue()
     que.put( (0.0, RestrictionSolution([vertex], [initial_state], []) ) )
-    num_times_solved_convex_restriction = 0
-
 
     found_target = False
     target_node = None # type: RestrictionSolution
+    total_solver_time = 0.0
+    number_of_iterations = 0
 
     while not found_target:
+        if que.empty():
+            WARN("que is empty")
+            break
         
         node = que.get()[1] # type: RestrictionSolution
+        INFO("at", node.vertex_names(), verbose = options.policy_verbose_choices)
+
+        # stop if the number of iterations is too high
+        number_of_iterations += 1
+        if number_of_iterations >= options.forward_iteration_limit:
+            WARN("exceeded number of forward iterations")
+            return None, total_solver_time
+
         if node.vertex_now().vertex_is_target:
+            YAY("found target", verbose = options.policy_verbose_choices)
             found_target = True
             target_node = node
             break
-        else:
-            if options.allow_vertex_revisits:
-                vertex_paths = get_all_n_step_paths(
-                    graph, options.policy_lookahead, node.vertex_now()
-                )
+
+        # heuristic: don't ever consider a point you've already been in
+        stop = False
+        for point in node.trajectory[:-1]:
+            if np.allclose(node.point_now(), point, atol=1e-3):
+                stop = True
+                break
+        if stop:
+            WARN("skipped a point due to", verbose = options.policy_verbose_choices)
+            continue # skip this one, we've already been in this particular point
+
+
+        # get all k step optimal paths
+        next_decision_que, solve_time = get_k_step_optimal_paths(graph, node, target_state)
+        total_solver_time += solve_time
+        while not next_decision_que.empty():
+            next_cost, next_node = next_decision_que.get()
+            # TODO: fix this cost; need to extend
+            if options.policy_rollout_reoptimize_path_so_far_and_K_step:
+                que.put( (next_cost, next_node) )
             else:
-                vertex_paths = get_all_n_step_paths_no_revisits(
-                    graph, options.policy_lookahead, node.vertex_now(), node.vertex_path_so_far
-                )
-            # for every path -- solve convex restriction, add next states
-            # print(len(vertex_paths))
-            for vertex_path in vertex_paths:
-                bezier_curves = solve_convex_restriction(graph, vertex_path, node.point_now(), options, target_state=target_state, one_last_solve=False)
-                num_times_solved_convex_restriction += 1
-                # check if solution exists
-                if bezier_curves is not None:
-                    next_node = node.extend(bezier_curves[0], vertex_path[1])
-                    # evaluate the cost
-                    add_edge_and_vertex_violations = False
-                    add_target_heuristic = not options.policy_use_zero_heuristic
-                    cost_of_path = get_path_cost(graph, next_node.vertex_path_so_far, next_node.bezier_path_so_far, add_edge_and_vertex_violations, add_target_heuristic, target_state=target_state)
-                    que.put( (cost_of_path, next_node) )
-                else:
-                    WARN("failed to solve")
+                que.put( (next_cost + node.get_cost(graph, False, False, target_state), next_node) )
 
-    if options.policy_verbose_number_of_restrictions_solves:
-        INFO("solved the convex restriction", num_times_solved_convex_restriction, "of times")
-
-
+        
     if found_target:
-        full_path = postprocess_the_path(graph, target_node.vertex_path_so_far, target_node.bezier_path_so_far, initial_state, options, target_state)
-        return full_path, target_node.vertex_path_so_far
+        final_solution, solver_time = postprocess_the_path(graph, target_node, initial_state, options, target_state)
+        total_solver_time += solver_time
+        return final_solution, total_solver_time
         
     else:
-        WARN("no path from start vertex to target!")
-        return None, None
+        WARN("did not find path from start vertex to target!")
+        return None, total_solver_time
                
 
 def obtain_rollout(
