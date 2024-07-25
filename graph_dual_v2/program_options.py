@@ -41,6 +41,8 @@ class ProgramOptions:
 
         # ---------------------------------------------
         # parameters specific to bezier curves
+        self.postprocess_via_shortcutting = False
+        self.max_num_shortcut_steps = 1
         self.postprocess_by_solving_restriction_on_mode_sequence = True
         self.verbose_restriction_improvement = False
 
@@ -117,6 +119,9 @@ class ProgramOptions:
         policy_options = np.array([self.use_lookahead_with_backtracking_policy, self.use_cheap_a_star_policy])
         assert not np.sum(policy_options) < 1, "must select policy lookahead option"
         assert not np.sum(policy_options) > 1, "selected multiple policy lookahead options"
+
+        assert np.sum( [self.policy_rollout_reoptimize_path_so_far_and_K_step, 
+                        self.policy_rollout_reoptimize_path_so_far_before_K_step]) <= 1, "reoptimizing twice"
 
         # assert not (self.policy_use_l2_norm_cost and self.policy_use_quadratic_cost)
 
