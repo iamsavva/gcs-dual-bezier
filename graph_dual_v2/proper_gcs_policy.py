@@ -152,7 +152,10 @@ def get_k_step_optimal_paths(
         solve_times[i] = solver_time
         if r_sol is not None:
             add_target_heuristic = True
-            next_node = node.extend(r_sol.trajectory[1], r_sol.edge_variable_trajectory[0], r_sol.vertex_path[1]) # type: RestrictionSolution
+            if r_sol.length() == 1:
+                next_node = r_sol
+            else:
+                next_node = node.extend(r_sol.trajectory[1], r_sol.edge_variable_trajectory[0], r_sol.vertex_path[1]) # type: RestrictionSolution
             cost_of_que_node = r_sol.get_cost(graph, False, add_target_heuristic, target_state)
             INFO(r_sol.vertex_names(), np.round(cost_of_que_node, 3), verbose=options.policy_verbose_choices)
             decision_options.put( (cost_of_que_node+np.random.uniform(0,1e-9), next_node ))
