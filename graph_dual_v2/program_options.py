@@ -66,6 +66,9 @@ class ProgramOptions:
         self.policy_verbose_choices = False
         self.policy_verbose_number_of_restrictions_solves = False
 
+        self.policy_rollout_reoptimize_path_so_far_and_K_step = False
+        self.policy_rollout_reoptimize_path_so_far_before_K_step = False
+
         # ----------------------------------
         # GCS policy related settings.
         # as of now, only used for computing optimal solutions.

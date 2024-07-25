@@ -89,6 +89,9 @@ class RestrictionSolution:
     def point_now(self) -> npt.NDArray:
         return self.trajectory[-1]
     
+    def point_initial(self) -> npt.NDArray:
+        return self.trajectory[0]
+    
     def edge_var_now(self) -> npt.NDArray:
         return self.edge_variable_trajectory[-1] if len(self.edge_variable_trajectory) > 0 else None
     
@@ -97,6 +100,9 @@ class RestrictionSolution:
 
     def vertex_names(self):
         return [v.name for v in self.vertex_path]
+    
+    def make_copy(self):
+        return RestrictionSolution(self.vertex_path, self.trajectory, self.edge_variable_trajectory)
 
     def extend(self, next_point: npt.NDArray, next_edge_var: npt.NDArray, next_vertex: DualVertex) -> "RestrictionSolution":
         if not next_vertex.convex_set.PointInSet(next_point):
@@ -108,6 +114,14 @@ class RestrictionSolution:
                     self.trajectory + [next_point], 
                     self.edge_variable_trajectory + [next_edge_var]
                     )
+    
+    def reoptimize(self, graph:PolynomialDualGCS, verbose_failure:bool, target_state:npt.NDArray, one_last_solve:bool):
+        new_sol, solver_time = solve_convex_restriction(graph, self.vertex_path, self.point_initial(), verbose_failure, target_state, one_last_solve)
+        assert new_sol is not None, WARN("resolving on the same restriction failed. something is fishy")
+            
+        self.trajectory = new_sol.trajectory
+        self.edge_variable_trajectory = new_sol.edge_variable_trajectory
+        return solver_time
 
     def get_cost(self, graph:PolynomialDualGCS, 
                  use_surrogate: bool, 

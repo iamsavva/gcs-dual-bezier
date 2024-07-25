@@ -39,6 +39,7 @@ from pydrake.math import (  # pylint: disable=import-error, no-name-in-module, u
     eq,
     le,
 )
+import copy
 
 import plotly.graph_objects as go  # pylint: disable=import-error
 from plotly.express.colors import sample_colorscale  # pylint: disable=import-error
@@ -142,23 +143,46 @@ def get_k_step_optimal_paths(
     
     # for every path -- solve convex restriction, add next states
     decision_options = PriorityQueue()
+
+    pre_solve_time = 0.0
+    # node = node.make_copy()
+    if options.policy_rollout_reoptimize_path_so_far_before_K_step and node.length() > 1:
+        node.reoptimize(graph, False, target_state, False)
+        # node, pre_solve_time = solve_convex_restriction(graph, 
+        #                                                 node.vertex_path, 
+        #                                                 node.point_initial(), 
+        #                                                 target_state=target_state, 
+        #                                                 one_last_solve=False)
     
     INFO("options", verbose=options.policy_verbose_choices)
     solve_times = [0.0]*len(vertex_paths)
     for i, vertex_path in enumerate(vertex_paths):
-        # r_sols, solver_time = solve_parallelized_convex_restriction(graph, [vertex_path], node.point_now(), target_state=target_state, one_last_solve=False)
-        # r_sol = None if r_sols is None else r_sols[0]
-        r_sol, solver_time = solve_convex_restriction(graph, vertex_path, node.point_now(), target_state=target_state, one_last_solve=False)
+        if options.policy_rollout_reoptimize_path_so_far_and_K_step:
+            index = len(node.vertex_path)
+            r_sol, solver_time = solve_convex_restriction(graph, 
+                                                          node.vertex_path[:-1] + vertex_path, 
+                                                          node.point_initial(), 
+                                                          target_state=target_state, 
+                                                          one_last_solve=False)
+        else:
+            index = 1
+            r_sol, solver_time = solve_convex_restriction(graph, 
+                                                          vertex_path, 
+                                                          node.point_now(), 
+                                                          target_state=target_state, 
+                                                          one_last_solve=False)
         solve_times[i] = solver_time
         if r_sol is not None:
             add_target_heuristic = True
-            if r_sol.length() == 1:
+            if r_sol.length() == index:
                 next_node = r_sol
             else:
-                next_node = node.extend(r_sol.trajectory[1], r_sol.edge_variable_trajectory[0], r_sol.vertex_path[1]) # type: RestrictionSolution
+                next_node = node.extend(r_sol.trajectory[index], r_sol.edge_variable_trajectory[index-1], r_sol.vertex_path[index]) # type: RestrictionSolution
             cost_of_que_node = r_sol.get_cost(graph, False, add_target_heuristic, target_state)
             INFO(r_sol.vertex_names(), np.round(cost_of_que_node, 3), verbose=options.policy_verbose_choices)
             decision_options.put( (cost_of_que_node+np.random.uniform(0,1e-9), next_node ))
+        else:
+            WARN([v.name for v in vertex_path], "failed", verbose=options.policy_verbose_choices)
 
     
     if options.use_parallelized_solve_time_reporting:
@@ -166,6 +190,8 @@ def get_k_step_optimal_paths(
         total_solver_time = np.max(solve_times)*num_parallel_solves
     else:
         total_solver_time = np.sum(solve_times)
+
+    total_solver_time += pre_solve_time
 
     INFO("---", verbose=options.policy_verbose_choices)
     return decision_options, total_solver_time
