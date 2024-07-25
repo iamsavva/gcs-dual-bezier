@@ -300,6 +300,7 @@ def lookahead_with_backtracking_policy(
             INFO("backtracking", verbose=options.policy_verbose_choices)
         else:
             node = decision_options[decision_index].get()[1] # type: RestrictionSolution
+            INFO("at", node.vertex_names(), verbose = options.policy_verbose_choices)
 
             if node.vertex_now().vertex_is_target:
                 found_target = True
@@ -355,9 +356,9 @@ def cheap_a_star_policy(
     -- backtrack to the last state when some action was available.
     Returns a list of bezier curves. Each bezier curve is a list of control points (numpy arrays).
     """
-    raise NotImplementedError()
     options = graph.options
     options.vertify_options_validity()
+    INFO("running cheap A*", verbose = options.policy_verbose_choices)
 
     if target_state is None:
         if options.dont_do_goal_conditioning:

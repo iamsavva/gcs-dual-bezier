@@ -321,6 +321,8 @@ def solve_parallelized_convex_restriction(
         solver_solve_time = solution.get_solver_details().solve_time
     elif options.policy_solver == GurobiSolver:
         solver_solve_time = solution.get_solver_details().optimizer_time
+    elif options.policy_solver == OsqpSolver:
+        solver_solve_time = solution.get_solver_details().solve_time
     else:
         WARN("don't know how to get solver time for the solver", solution.get_solver_id().name())
         raise NotImplementedError()
