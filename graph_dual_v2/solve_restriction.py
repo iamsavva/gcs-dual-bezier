@@ -125,7 +125,10 @@ class RestrictionSolution:
 
     def get_cost(self, graph:PolynomialDualGCS, 
                  use_surrogate: bool, 
-                 add_target_heuristic:bool = True, target_state:npt.NDArray = None) -> float:
+                 add_target_heuristic:bool = True, 
+                 target_state:npt.NDArray = None,
+                 double_integrator_delta_t_list: T.List[float] = None
+                 ) -> float:
         """
         Note: this is cost of the full path with the target cost
         """
@@ -143,9 +146,17 @@ class RestrictionSolution:
             x_v_1 = self.trajectory[index+1]
             u = self.edge_variable_trajectory[index]
             if use_surrogate:
-                cost += edge.cost_function_surrogate(x_v, u, x_v_1, target_state)
+                if double_integrator_delta_t_list is not None:
+                    delta_t = double_integrator_delta_t_list[index]
+                    cost += edge.cost_function_surrogate(x_v, u, x_v_1, target_state, delta_t)
+                else:
+                    cost += edge.cost_function_surrogate(x_v, u, x_v_1, target_state)
             else:
-                cost += edge.cost_function(x_v, u, x_v_1, target_state)
+                if double_integrator_delta_t_list is not None:
+                    delta_t = double_integrator_delta_t_list[index]
+                    cost += edge.cost_function(x_v, u, x_v_1, target_state, delta_t)
+                else:
+                    cost += edge.cost_function(x_v, u, x_v_1, target_state)                
 
         if add_target_heuristic:
             cost_to_go_at_last_point = self.vertex_path[-1].get_cost_to_go_at_point(self.trajectory[-1], target_state, graph.options.check_cost_to_go_at_point)
@@ -162,7 +173,8 @@ def solve_parallelized_convex_restriction(
     verbose_failure=True,
     target_state:npt.NDArray = None,
     one_last_solve:bool = False,
-    verbose_solve_success = True
+    verbose_solve_success = True,
+    double_integrator_delta_t_lists: T.List[T.List[float]] = None,
 ) -> T.Tuple[T.List[RestrictionSolution], float]:
     """
     solve a convex restriction over a vertex path
@@ -185,7 +197,7 @@ def solve_parallelized_convex_restriction(
     edge_variable_trajectories = []
     timer = timeit()
 
-    for vertex_path in vertex_paths:
+    for v_path_index, vertex_path in enumerate(vertex_paths):
         # previous direction of motion -- for bezier curve continuity
         vertex_trajectory = []
         edge_variable_trajectory = []
@@ -231,7 +243,12 @@ def solve_parallelized_convex_restriction(
                 if edge.u_bounding_set is not None:
                     add_set_membership(prog, edge.u_bounding_set, u, True)
 
-                cost = edge.cost_function(vertex_trajectory[i-1], u, x, target_state)
+                
+                if double_integrator_delta_t_lists is None:
+                    cost = edge.cost_function(vertex_trajectory[i-1], u, x, target_state)
+                else:
+                    delta_t = double_integrator_delta_t_lists[v_path_index][i-1]
+                    cost = edge.cost_function(vertex_trajectory[i-1], u, x, target_state, delta_t)
                 prog.AddCost(cost)
 
                 for evaluator in edge.linear_inequality_evaluators:
@@ -246,7 +263,11 @@ def solve_parallelized_convex_restriction(
 
                 # groebner bases related stuff
                 for evaluator in edge.groebner_basis_equality_evaluators:
-                    prog.AddLinearConstraint(eq(evaluator(vertex_trajectory[i-1], u, x, target_state), 0))
+                    if double_integrator_delta_t_lists is None:
+                        prog.AddLinearConstraint(eq(evaluator(vertex_trajectory[i-1], u, x, target_state), 0))
+                    else:
+                        delta_t = double_integrator_delta_t_lists[v_path_index][i-1]
+                        prog.AddLinearConstraint(eq(evaluator(vertex_trajectory[i-1], u, x, target_state, delta_t), 0))
 
             # add heuristic cost on the last point
             if i == len(vertex_path) - 1:  
@@ -302,10 +323,7 @@ def solve_parallelized_convex_restriction(
                                             "MSK_IPAR_OPTIMIZER", 
                                             options.MSK_IPAR_OPTIMIZER)
                 
-            if options.policy_use_robust_mosek_params:
-                solver_options.SetOption(MosekSolver.id(), "MSK_DPAR_INTPNT_CO_TOL_REL_GAP", 1e-3)
-                solver_options.SetOption(MosekSolver.id(), "MSK_IPAR_INTPNT_SOLVE_FORM", 1)
-
+                
             # latex(prog)
 
             # solve the program
@@ -349,9 +367,11 @@ def solve_convex_restriction(
     state_now: npt.NDArray,
     verbose_failure:bool =False,
     target_state:npt.NDArray = None,
-    one_last_solve = False
+    one_last_solve = False,
+    double_itnegrator_delta_t_list = None,
 ) -> T.Tuple[RestrictionSolution, float]:
-    result, dt = solve_parallelized_convex_restriction(graph, [vertex_path], state_now, verbose_failure, target_state, one_last_solve, verbose_solve_success = False)
+    double_integrator_delta_t_lists = None if double_itnegrator_delta_t_list is None else [double_itnegrator_delta_t_list]
+    result, dt = solve_parallelized_convex_restriction(graph, [vertex_path], state_now, verbose_failure, target_state, one_last_solve, False, double_integrator_delta_t_lists)
     if result is None:
         return None, dt
     else:
