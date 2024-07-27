@@ -304,11 +304,11 @@ def solve_parallelized_convex_restriction(
                     "MSK_DPAR_INTPNT_CO_TOL_DFEAS",
                     options.policy_MSK_DPAR_INTPNT_CO_TOL_DFEAS,
                 )
-                solver_options.SetOption(
-                    MosekSolver.id(),
-                    "MSK_DPAR_INTPNT_TOL_INFEAS",
-                    options.MSK_DPAR_INTPNT_TOL_INFEAS,
-                )
+            solver_options.SetOption(
+                MosekSolver.id(),
+                "MSK_DPAR_INTPNT_TOL_INFEAS",
+                options.MSK_DPAR_INTPNT_TOL_INFEAS,
+            )
 
             solver_options.SetOption(MosekSolver.id(), 
                                     "MSK_IPAR_PRESOLVE_USE", 

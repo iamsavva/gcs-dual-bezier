@@ -201,8 +201,7 @@ def postprocess_the_path(graph:PolynomialDualGCS,
                           target_state:npt.NDArray = None,
                           ) -> T.Tuple[RestrictionSolution, float]:
     options = graph.options
-    if options.verbose_restriction_improvement:
-        cost_before = restriction.get_cost(graph, False, True, target_state=target_state)
+    cost_before = restriction.get_cost(graph, False, True, target_state=target_state)
     timer = timeit()
     total_solver_time = 0.0
     # solve a convex restriction on the vertex sequence
@@ -225,15 +224,24 @@ def postprocess_the_path(graph:PolynomialDualGCS,
         if options.use_parallelized_solve_time_reporting:
             num_parallel_solves = np.ceil(len(solve_times)/options.num_simulated_cores)
             total_solver_time = np.max(solve_times)*num_parallel_solves
+            INFO(
+                "shortcut posptprocessing, num_parallel_solves",
+                num_parallel_solves,
+                verbose = options.verbose_restriction_improvement
+            )
+            INFO(np.round(solve_times, 3), verbose = options.verbose_restriction_improvement)
         else:
             total_solver_time = np.sum(solve_times)
+        INFO("shortcut posptprocessing time", total_solver_time, verbose = options.verbose_restriction_improvement)
 
     elif options.postprocess_by_solving_restriction_on_mode_sequence:
         INFO("using restriction post-processing", verbose = options.verbose_restriction_improvement)
         best_restriction, total_solver_time = solve_convex_restriction(graph, restriction.vertex_path, initial_state, verbose_failure=False, target_state=target_state, one_last_solve = True)
         best_cost = best_restriction.get_cost(graph, False, True, target_state=target_state)
+        INFO("shortcut posptprocessing time", total_solver_time, verbose = options.verbose_restriction_improvement)
     else:
         best_restriction = restriction
+        best_cost = cost_before
         
     INFO(
         "path cost improved from",
@@ -294,14 +302,25 @@ def double_integrator_postprocessing(graph:PolynomialDualGCS,
     if options.use_parallelized_solve_time_reporting:
         num_parallel_solves = np.ceil(len(solve_times)/options.num_simulated_cores)
         total_solver_time = np.max(solve_times)*num_parallel_solves
+        INFO(
+            "double inegrator postprocessing, num_parallel_solves",
+            num_parallel_solves,
+            verbose = options.verbose_restriction_improvement
+        )
+        INFO(np.round(solve_times, 3), verbose = options.verbose_restriction_improvement)
     else:
         total_solver_time = np.sum(solve_times)
 
-    if options.verbose_restriction_improvement:
-        INFO(
-            "double integrator improvement",
-            np.round(best_cost, 2),
-        )
+    INFO(
+        "double integrator improvement",
+        np.round(best_cost, 2),
+        verbose = options.verbose_restriction_improvement
+    )
+    INFO(
+        "double inegrator postprocessing time",
+        total_solver_time,
+        verbose = options.verbose_restriction_improvement
+    )
 
     return best_restriction, best_schedule, total_solver_time
 
