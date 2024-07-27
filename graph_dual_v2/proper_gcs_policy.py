@@ -42,9 +42,7 @@ from pydrake.math import (  # pylint: disable=import-error, no-name-in-module, u
 import copy
 
 import plotly.graph_objects as go  # pylint: disable=import-error
-from plotly.express.colors import sample_colorscale  # pylint: disable=import-error
 import plotly.graph_objs as go
-from plotly.subplots import make_subplots
 
 from collections import deque
 from queue import PriorityQueue

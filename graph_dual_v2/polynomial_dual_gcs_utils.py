@@ -31,6 +31,7 @@ from pydrake.symbolic import (  # pylint: disable=import-error, no-name-in-modul
     Variable,
     Variables,
     Expression,
+    Monomial,
 )
 from pydrake.math import ( # pylint: disable=import-error, no-name-in-module, unused-import
     ge,
@@ -235,7 +236,7 @@ def make_potential(indet_list: npt.NDArray, pot_type:str, poly_deg:int, prog: Ma
 
 def define_sos_constraint_over_polyhedron_multivar_new(
     prog: MathematicalProgram,
-    all_variables: Variables,
+    unique_vars: npt.NDArray,
     linear_inequalities: T.List[Expression],
     quadratic_inequalities: T.List[Expression],
     equality_constraints: T.List[Expression],
@@ -243,6 +244,7 @@ def define_sos_constraint_over_polyhedron_multivar_new(
     function: Expression,
     options: ProgramOptions,
 ) -> None:
+    all_variables = Variables(unique_vars)
     def make_multipliers(degree, dimension, psd):
         if degree == 0:
             lambdas = prog.NewContinuousVariables(dimension)
@@ -303,10 +305,13 @@ def define_sos_constraint_over_polyhedron_multivar_new(
         lambda_eq = make_multipliers(deg, len(equality_constraints), False)
         s_procedure += equality_constraints.dot(lambda_eq)
 
-
     
     expr = function.Substitute(subsitution_dictionary) - s_procedure
-    prog.AddSosConstraint(expr)
+
+    # monomial_basis = unique_vars.reshape((len(unique_vars),1))
+    
+
+    prog.AddSosConstraint(expr, monomial_basis=[Monomial(mon) for mon in unique_vars])
 
 
     # expr = Polynomial(expr, all_variables)

@@ -39,12 +39,6 @@ from pydrake.math import (  # pylint: disable=import-error, no-name-in-module, u
     eq,
     le,
 )
-import cProfile
-
-import plotly.graph_objects as go  # pylint: disable=import-error
-from plotly.express.colors import sample_colorscale  # pylint: disable=import-error
-import plotly.graph_objs as go
-from plotly.subplots import make_subplots
 
 from collections import deque
 from queue import PriorityQueue
@@ -184,18 +178,21 @@ def solve_parallelized_convex_restriction(
     """
     options = graph.options
 
-    if target_state is None:
-        if options.dont_do_goal_conditioning:
-            target_state = np.zeros(graph.target_convex_set.ambient_dimension())
-        else:
-            assert isinstance(graph.target_convex_set, Point), "target set not passed when target set not a point"
-            target_state = graph.target_convex_set.x()
-
     # construct an optimization problem
     prog = MathematicalProgram()
     vertex_trajectories = []
     edge_variable_trajectories = []
     timer = timeit()
+
+    if target_state is None:
+        if options.dont_do_goal_conditioning:
+            target_state = np.zeros(graph.target_convex_set.ambient_dimension())
+        else:
+            if isinstance(graph.target_convex_set, Point):
+                # assert , "target set not passed when target set not a point"
+                target_state = graph.target_convex_set.x()
+            else:
+                target_state = prog.NewContinuousVariables(graph.target_convex_set.ambient_dimension())
 
     for v_path_index, vertex_path in enumerate(vertex_paths):
         # previous direction of motion -- for bezier curve continuity
@@ -206,7 +203,6 @@ def solve_parallelized_convex_restriction(
         for i, vertex in enumerate(vertex_path):
             x = prog.NewContinuousVariables(vertex.state_dim, "x"+str(i))
             vertex_trajectory.append(x)
-
             
             if not vertex.vertex_is_target:
                 add_set_membership(prog, vertex.convex_set, x, True)
@@ -224,18 +220,18 @@ def solve_parallelized_convex_restriction(
                         terminating_condition = recenter_convex_set(vertex.relaxed_target_condition_for_policy, target_state)
                         add_set_membership(prog, terminating_condition, x, True)
                     else:
-                        # prog.AddLinearConstraint( eq(x, target_state))
-                        # prog.AddLinearEqualityConstraint(np.eye(len(x)), target_state, x)
-                        prog.AddLinearEqualityConstraint(x, target_state)
+                        # prog.AddLinearEqualityConstraint(x, target_state)
+                        prog.AddLinearConstraint(eq(x, target_state))
 
 
             if i == 0:
+                # NOTE: if state_now is None, we have a free initial state problem
                 if state_now is not None:
                     prog.AddLinearEqualityConstraint(x, state_now)
             else:
                 edge = graph.edges[get_edge_name(vertex_path[i - 1].name, vertex.name)]
 
-                if options.add_right_point_inside_intersection_constraint:
+                if options.add_right_point_inside_intersection_constraint and edge.left.state_dim == edge.right.state_dim:
                     add_set_membership(prog, edge.left.convex_set, x, True)
 
                 u = None if edge.u is None else prog.NewContinuousVariables(len(edge.u))
@@ -274,7 +270,6 @@ def solve_parallelized_convex_restriction(
                 if not options.policy_use_zero_heuristic:
                     cost = vertex.get_cost_to_go_at_point(x, target_state, options.check_cost_to_go_at_point)
                     prog.AddCost(cost)
-            
 
         vertex_trajectories.append(vertex_trajectory)
         edge_variable_trajectories.append(edge_variable_trajectory)
