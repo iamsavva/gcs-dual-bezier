@@ -110,6 +110,10 @@ class ProgramOptions:
         # ----------------------------------
 
 
+        self.postprocess_shortcutting_long_sequences = False
+        self.long_sequence_num = 4
+
+
         
 
     def vertify_options_validity(self):

@@ -173,6 +173,18 @@ def make_a_list_of_shortcuts(numbers:T.List[int], K:int, index:int=0):
         else:
             break
     return res
+
+def make_list_of_shortcuts_for_index(numbers:T.List[int], K:int, index:int):
+    assert 0 <= index and index < len(numbers)
+    res = []
+    for i in range(0,K+1):
+        if numbers[index] - i >= 1:
+            res.append( numbers[:index] + [numbers[index] - i] + numbers[index+1:] )
+        else:
+            break
+    return res
+
+
 def get_repeats(solution: RestrictionSolution):
     vertex_names = solution.vertex_names()
     vertices = []
@@ -187,6 +199,8 @@ def get_repeats(solution: RestrictionSolution):
         repeats.append(r)
         i+=1
     return vertices, repeats
+
+
 def repeats_to_vertex_names(vertices, repeats):
     res = []
     for i in range(len(repeats)):
@@ -203,10 +217,36 @@ def postprocess_the_path(graph:PolynomialDualGCS,
     timer = timeit()
     total_solver_time = 0.0
     # solve a convex restriction on the vertex sequence
+    best_restriction = restriction
+    best_cost = cost_before
 
+    if options.postprocess_shortcutting_long_sequences:
+        INFO("using long sequence shortcut posptprocessing", verbose = options.verbose_restriction_improvement)
+        unique_vertices, repeats = get_repeats(best_restriction)
+        for i, r in enumerate(repeats):
+            if r >= options.long_sequence_num:
+                shortcut_repeats = make_list_of_shortcuts_for_index(repeats, r, i)
+                solve_times = [0.0]*len(shortcut_repeats)
+                que = PriorityQueue()
+                for i, shortcut_repeat in enumerate(shortcut_repeats):
+                    vertex_path = repeats_to_vertex_names(unique_vertices, shortcut_repeat)
+                    new_restriction, solver_time = solve_convex_restriction(graph, vertex_path, initial_state, verbose_failure=False, target_state=target_state, one_last_solve = True)
+                    solve_times[i] = solver_time
+                    if new_restriction is not None:
+                        restriction_cost = new_restriction.get_cost(graph, False, True, target_state=target_state)
+                        que.put((restriction_cost+np.random.uniform(0,1e-9), new_restriction))
+                best_cost, best_restriction = que.get()
+                unique_vertices, repeats = get_repeats(best_restriction)
+                if options.use_parallelized_solve_time_reporting:
+                    num_parallel_solves = np.ceil(len(solve_times)/options.num_simulated_cores)
+                    total_solver_time += np.max(solve_times)*num_parallel_solves
+                else:
+                    total_solver_time += np.sum(solve_times)
+
+        
     if options.postprocess_via_shortcutting:
         INFO("using shortcut posptprocessing", verbose = options.verbose_restriction_improvement)
-        unique_vertices, repeats = get_repeats(restriction)
+        unique_vertices, repeats = get_repeats(best_restriction)
         shortcut_repeats = make_a_list_of_shortcuts(repeats, options.max_num_shortcut_steps)
         solve_times = [0.0]*len(shortcut_repeats)
         que = PriorityQueue()
@@ -221,7 +261,7 @@ def postprocess_the_path(graph:PolynomialDualGCS,
 
         if options.use_parallelized_solve_time_reporting:
             num_parallel_solves = np.ceil(len(solve_times)/options.num_simulated_cores)
-            total_solver_time = np.max(solve_times)*num_parallel_solves
+            total_solver_time += np.max(solve_times)*num_parallel_solves
             INFO(
                 "shortcut posptprocessing, num_parallel_solves",
                 num_parallel_solves,
@@ -229,17 +269,16 @@ def postprocess_the_path(graph:PolynomialDualGCS,
             )
             INFO(np.round(solve_times, 3), verbose = options.verbose_restriction_improvement)
         else:
-            total_solver_time = np.sum(solve_times)
+            total_solver_time += np.sum(solve_times)
         INFO("shortcut posptprocessing time", total_solver_time, verbose = options.verbose_restriction_improvement)
 
     elif options.postprocess_by_solving_restriction_on_mode_sequence:
         INFO("using restriction post-processing", verbose = options.verbose_restriction_improvement)
-        best_restriction, total_solver_time = solve_convex_restriction(graph, restriction.vertex_path, initial_state, verbose_failure=False, target_state=target_state, one_last_solve = True)
+        best_restriction, solver_time = solve_convex_restriction(graph, best_restriction.vertex_path, initial_state, verbose_failure=False, target_state=target_state, one_last_solve = True)
+        total_solver_time += solver_time
         best_cost = best_restriction.get_cost(graph, False, True, target_state=target_state)
         INFO("shortcut posptprocessing time", total_solver_time, verbose = options.verbose_restriction_improvement)
-    else:
-        best_restriction = restriction
-        best_cost = cost_before
+        
         
     INFO(
         "path cost improved from",
