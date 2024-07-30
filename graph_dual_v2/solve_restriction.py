@@ -319,8 +319,6 @@ def solve_parallelized_convex_restriction(
                                             options.MSK_IPAR_OPTIMIZER)
                 
                 
-            # latex(prog)
-
             # solve the program
             solution = mosek_solver.Solve(prog, solver_options=solver_options)
         else:

@@ -278,7 +278,7 @@ def double_integrator_postprocessing(graph:PolynomialDualGCS,
         for index, pick in enumerate(pick_or_not):
             if pick == "1":
                 delta_t_schedule[sum(repeats[:index])] = delta_t * ratio
-        schedules.append(delta_t_schedule)
+        schedules.append(np.array(delta_t_schedule))
     
     solve_times = [0.0]*len(schedules)
     que = PriorityQueue()
