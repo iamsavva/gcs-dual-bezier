@@ -252,9 +252,10 @@ def postprocess_the_path(graph:PolynomialDualGCS,
                     if new_restriction is not None:
                         restriction_cost = new_restriction.get_cost(graph, False, True, target_state=target_state)
                         que.put((restriction_cost+np.random.uniform(0,1e-9), new_restriction))
-                best_cost, best_restriction = que.get()
-                unique_vertex_names, repeats = get_name_repeats(best_restriction.vertex_names())
-                unique_vertices = [graph.vertices[name] for name in unique_vertex_names]
+                if not que.empty():
+                    best_cost, best_restriction = que.get(block=False)
+                    unique_vertex_names, repeats = get_name_repeats(best_restriction.vertex_names())
+                    unique_vertices = [graph.vertices[name] for name in unique_vertex_names]
                 if options.use_parallelized_solve_time_reporting:
                     num_parallel_solves = np.ceil(len(solve_times)/options.num_simulated_cores)
                     total_solver_time += np.max(solve_times)*num_parallel_solves
@@ -276,7 +277,8 @@ def postprocess_the_path(graph:PolynomialDualGCS,
             if new_restriction is not None:
                 restriction_cost = new_restriction.get_cost(graph, False, True, target_state=target_state)
                 que.put((restriction_cost+np.random.uniform(0,1e-9), new_restriction))
-        best_cost, best_restriction = que.get()
+        if not que.empty():
+            best_cost, best_restriction = que.get(block=False)
 
         if options.use_parallelized_solve_time_reporting:
             num_parallel_solves = np.ceil(len(solve_times)/options.num_simulated_cores)
@@ -478,7 +480,8 @@ def lookahead_with_backtracking_policy(
 
     while not found_target:
         if decision_index == -1:
-            return None, None
+            WARN("backtracked all the way back")
+            return None, total_solver_time
         if decision_options[decision_index].empty():
             decision_index -= 1
             INFO("backtracking", verbose=options.policy_verbose_choices)
