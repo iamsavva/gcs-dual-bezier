@@ -115,6 +115,8 @@ class ProgramOptions:
 
         self.subpath_expansion_limit = 6
 
+        self.a_star_backtrack_limit = 2
+
 
         
 

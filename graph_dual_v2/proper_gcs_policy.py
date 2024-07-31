@@ -554,6 +554,8 @@ def cheap_a_star_policy(
     total_solver_time = 0.0
     number_of_iterations = 0
 
+    max_path_length_so_far = 0
+
     while not found_target:
         if que.empty():
             WARN("que is empty")
@@ -561,6 +563,12 @@ def cheap_a_star_policy(
         
         node = que.get()[1] # type: RestrictionSolution
         INFO("at", node.vertex_names(), verbose = options.policy_verbose_choices)
+
+        if node.length() > max_path_length_so_far:
+            max_path_length_so_far = node.length()
+        elif node.length() < max_path_length_so_far - options.a_star_backtrack_limit:
+            continue
+
 
         # stop if the number of iterations is too high
         number_of_iterations += 1
