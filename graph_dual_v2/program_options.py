@@ -109,6 +109,8 @@ class ProgramOptions:
         # ----------------------------------
 
 
+        self.shortcut_by_scaling_dt = False
+
         self.postprocess_shortcutting_long_sequences = False
         self.long_sequence_num = 4
 

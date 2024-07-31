@@ -245,10 +245,10 @@ def postprocess_the_path(graph:PolynomialDualGCS,
                 shortcut_repeats = make_list_of_shortcuts_for_index(repeats, r, i)
                 solve_times = [0.0]*len(shortcut_repeats)
                 que = PriorityQueue()
-                for i, shortcut_repeat in enumerate(shortcut_repeats):
+                for j, shortcut_repeat in enumerate(shortcut_repeats):
                     vertex_path = repeats_to_vertex_names(unique_vertices, shortcut_repeat)
                     new_restriction, solver_time = solve_convex_restriction(graph, vertex_path, initial_state, verbose_failure=False, target_state=target_state, one_last_solve = True)
-                    solve_times[i] = solver_time
+                    solve_times[j] = solver_time
                     if new_restriction is not None:
                         restriction_cost = new_restriction.get_cost(graph, False, True, target_state=target_state)
                         que.put((restriction_cost+np.random.uniform(0,1e-9), new_restriction))
@@ -300,6 +300,35 @@ def postprocess_the_path(graph:PolynomialDualGCS,
         best_cost = best_restriction.get_cost(graph, False, True, target_state=target_state)
         INFO("shortcut posptprocessing time", total_solver_time, verbose = options.verbose_restriction_improvement)
         
+
+    if options.shortcut_by_scaling_dt:
+        dt = options.delta_t
+        scalings = np.linspace(0.8, 1, options.num_simulated_cores)
+
+        solve_times = [0.0]*len(scalings)
+        que = PriorityQueue()
+        for i, scaling in enumerate(scalings):
+            vertex_path = repeats_to_vertex_names(unique_vertices, shortcut_repeat)
+            new_restriction, solver_time = solve_convex_restriction(graph, 
+                                                                    vertex_path, 
+                                                                    initial_state, 
+                                                                    verbose_failure=False, 
+                                                                    target_state=target_state, 
+                                                                    one_last_solve = True,
+                                                                    double_itnegrator_delta_t_list=dt*scaling*np.ones(len(vertex_path)-1) )
+            solve_times[i] = solver_time
+            if new_restriction is not None:
+                restriction_cost = new_restriction.get_cost(graph, False, True, target_state=target_state, double_itnegrator_delta_t_list=dt*scaling*np.ones(len(vertex_path)-1))
+                que.put((restriction_cost+np.random.uniform(0,1e-9), (new_restriction, dt*scaling)))
+        if not que.empty():
+            best_cost, (best_restriction, best_dt) = que.get(block=False)
+            graph.options.delta_t = best_dt
+            options.delta_t = best_dt
+        if options.use_parallelized_solve_time_reporting:
+            num_parallel_solves = np.ceil(len(solve_times)/options.num_simulated_cores)
+            total_solver_time += np.max(solve_times)*num_parallel_solves
+        else:
+            total_solver_time += np.sum(solve_times)
         
     INFO(
         "path cost improved from",
