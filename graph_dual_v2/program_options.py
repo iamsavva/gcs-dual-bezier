@@ -113,6 +113,8 @@ class ProgramOptions:
         self.postprocess_shortcutting_long_sequences = False
         self.long_sequence_num = 4
 
+        self.subpath_expansion_limit = 6
+
 
         
 

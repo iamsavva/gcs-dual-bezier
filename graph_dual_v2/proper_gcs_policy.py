@@ -141,6 +141,8 @@ def get_k_step_optimal_paths(
                 next_node = r_sol
             else:
                 next_node = node.extend(r_sol.trajectory[index], r_sol.edge_variable_trajectory[index-1], r_sol.vertex_path[index]) # type: RestrictionSolution
+            next_node.expanded_subpath = " ".join([v.name for v in vertex_path])
+
             cost_of_que_node = r_sol.get_cost(graph, False, add_target_heuristic, target_state)
             INFO(r_sol.vertex_names(), np.round(cost_of_que_node, 3), verbose=options.policy_verbose_choices)
             decision_options.put( (cost_of_que_node+np.random.uniform(0,1e-9), next_node ))
@@ -296,73 +298,6 @@ def postprocess_the_path(graph:PolynomialDualGCS,
     return best_restriction, total_solver_time
 
 
-# def double_integrator_postprocessing(graph:PolynomialDualGCS, 
-#                                     restriction: RestrictionSolution,
-#                                     initial_state:npt.NDArray, 
-#                                     target_state:npt.NDArray = None
-#                                     )-> T.Tuple[RestrictionSolution, T.List[float], float]:
-#     options = graph.options
-#     unique_vertices, repeats = get_repeats(restriction)
-#     INFO("using double integrator post-processing", verbose = options.verbose_restriction_improvement)
-    
-#     delta_t = options.delta_t
-#     ratio = options.double_integrator_post_processing_ratio
-
-#     schedules = []
-#     num = len(unique_vertices)-1
-#     for i in range(2**num):
-#         pick_or_not = bin(i)[2:]
-#         if len(pick_or_not) < num:
-#             pick_or_not = "0"*(num - len(pick_or_not)) + pick_or_not
-
-#         delta_t_schedule = [delta_t] * (restriction.length()-1)
-#         for index, pick in enumerate(pick_or_not):
-#             if pick == "1":
-#                 delta_t_schedule[sum(repeats[:index])] = delta_t * ratio
-#         schedules.append(np.array(delta_t_schedule))
-    
-#     solve_times = [0.0]*len(schedules)
-#     que = PriorityQueue()
-#     for i, schedule in enumerate(schedules):
-#         new_restriction, solver_time = solve_convex_restriction(graph, 
-#                                                                 restriction.vertex_path, 
-#                                                                 initial_state, 
-#                                                                 verbose_failure=False, 
-#                                                                 target_state=target_state, 
-#                                                                 one_last_solve = True,
-#                                                                 double_itnegrator_delta_t_list=schedule)
-#         solve_times[i] = solver_time
-#         if new_restriction is not None:
-#             restriction_cost = new_restriction.get_cost(graph, False, True, target_state, schedule)
-#             que.put((restriction_cost+np.random.uniform(0,1e-9), (new_restriction, schedule)))
-
-#     best_cost, (best_restriction, best_schedule) = que.get()
-
-#     if options.use_parallelized_solve_time_reporting:
-#         num_parallel_solves = np.ceil(len(solve_times)/options.num_simulated_cores)
-#         total_solver_time = np.max(solve_times)*num_parallel_solves
-#         INFO(
-#             "double inegrator postprocessing, num_parallel_solves",
-#             num_parallel_solves,
-#             verbose = options.verbose_restriction_improvement
-#         )
-#         INFO(np.round(solve_times, 3), verbose = options.verbose_restriction_improvement)
-#     else:
-#         total_solver_time = np.sum(solve_times)
-
-#     INFO(
-#         "double integrator improvement",
-#         np.round(best_cost, 2),
-#         verbose = options.verbose_restriction_improvement
-#     )
-#     INFO(
-#         "double inegrator postprocessing time",
-#         total_solver_time,
-#         verbose = options.verbose_restriction_improvement
-#     )
-
-#     return best_restriction, best_schedule, total_solver_time
-
 
 def double_integrator_postprocessing(options: ProgramOptions,
                                     convex_set_path: T.List[ConvexSet],
@@ -445,8 +380,10 @@ def double_integrator_postprocessing(options: ProgramOptions,
 
 
     INFO(
-        "double integrator improvement",
-        np.round(best_cost, 2),
+        "double integrator time improvement from",
+        options.delta_t * (len(vertex_name_path)-1),
+        "to",
+        np.sum(schedule),
         verbose = options.verbose_restriction_improvement
     )
     INFO(
@@ -511,6 +448,8 @@ def lookahead_with_backtracking_policy(
             assert vertex.target_set_type is Point, "target set not passed when target set not a point"
             target_state = vertex.target_convex_set.x()
 
+    expanded_subpaths = dict()
+
     # cost, current state, last state, current vertex, state path so far, vertex path so far
     decision_options = [ PriorityQueue() ]
     decision_options[0].put( (0, RestrictionSolution([vertex], [initial_state], [])) )
@@ -530,6 +469,15 @@ def lookahead_with_backtracking_policy(
             INFO("backtracking", verbose=options.policy_verbose_choices)
         else:
             node = decision_options[decision_index].get()[1] # type: RestrictionSolution
+            if node.expanded_subpath is not None:
+                if node.expanded_subpath not in expanded_subpaths:
+                    expanded_subpaths[node.expanded_subpath] = 1
+                else:
+                    expanded_subpaths[node.expanded_subpath] += 1
+                if expanded_subpaths[node.expanded_subpath] > options.subpath_expansion_limit:
+                    continue
+
+
             INFO("at", node.vertex_names(), verbose = options.policy_verbose_choices)
 
             if node.vertex_now().vertex_is_target:

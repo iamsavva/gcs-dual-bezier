@@ -77,6 +77,8 @@ class RestrictionSolution:
             self.edge_variable_trajectory = [None] * (len(vertex_path)-1)
         assert len(self.edge_variable_trajectory) == len(vertex_path)-1
 
+        self.expanded_subpath = None
+
     def vertex_now(self) -> DualVertex:
         return self.vertex_path[-1]
     
