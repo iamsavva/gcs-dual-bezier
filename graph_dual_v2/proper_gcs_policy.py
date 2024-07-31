@@ -103,6 +103,21 @@ def get_k_step_optimal_paths(
     else:
         vertex_paths = graph.get_all_n_step_paths_no_revisits( options.policy_lookahead, node.vertex_now(), node.vertex_path)
     
+    if options.allow_vertex_revisits and graph.options.no_vertex_revisit_along_the_walk:
+        new_vertex_paths = []
+        vertex_names_in_path_so_far = node.vertex_names()
+        for vertex_path in vertex_paths:
+            add_this = True
+            for v in vertex_path:
+                if v.name != node.vertex_now().name and v.name in vertex_names_in_path_so_far:
+                    add_this = False
+                    break
+            if add_this:
+                new_vertex_paths.append(vertex_path)
+        vertex_paths = new_vertex_paths
+
+
+
     # for every path -- solve convex restriction, add next states
     decision_options = PriorityQueue()
 

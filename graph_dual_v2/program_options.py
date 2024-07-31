@@ -99,7 +99,6 @@ class ProgramOptions:
         self.dont_do_goal_conditioning = False
 
         self.check_cost_to_go_at_point = False # set to False, faster rollout prog generation
-
         
 
         self.do_double_integrator_postprocessing = False
@@ -116,6 +115,8 @@ class ProgramOptions:
         self.subpath_expansion_limit = 6
 
         self.a_star_backtrack_limit = 2
+
+        self.no_vertex_revisit_along_the_walk = False
 
 
         
