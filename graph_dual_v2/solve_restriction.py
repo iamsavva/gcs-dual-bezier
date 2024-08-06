@@ -226,6 +226,18 @@ def solve_parallelized_convex_restriction(
                         # prog.AddLinearEqualityConstraint(x, target_state)
                         prog.AddLinearConstraint(eq(x, target_state))
 
+                # if options.relax_target_condition_during_rollout and not one_last_solve:
+                #     # during rollout: relax target condition.
+                #     # at the end when solving restriction -- don't.
+                #     assert vertex.relaxed_target_condition_for_policy is not None
+                #     terminating_condition = recenter_convex_set(vertex.relaxed_target_condition_for_policy, target_state)
+                #     add_set_membership(prog, terminating_condition, x, True)
+                # else:
+                #     if options.dont_do_goal_conditioning:
+                #         add_set_membership(prog, vertex.convex_set, x, True)
+                #     else:
+                #         prog.AddLinearConstraint(eq(x, target_state))
+
 
             if i == 0:
                 # NOTE: if state_now is None, we have a free initial state problem

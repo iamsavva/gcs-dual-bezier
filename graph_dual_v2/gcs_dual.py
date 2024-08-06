@@ -498,11 +498,11 @@ class PolynomialDualGCS:
         if options.relax_target_condition_during_rollout is False:
             assert relaxed_target_condition_for_policy is None, "relaxed target condition not passed"
         if relaxed_target_condition_for_policy is None:
-            assert options.relax_target_condition_during_rollout is False, "relaxed target condition passed but now relaxing"
+            assert options.relax_target_condition_during_rollout is False, "relaxed target condition passed but not relaxing"
 
         if options.dont_do_goal_conditioning:
-            assert relaxed_target_condition_for_policy is None, "not doing goal conditioning but terminaing conditioned passed"
-            assert options.relax_target_condition_during_rollout is False
+            # assert relaxed_target_condition_for_policy is None, "not doing goal conditioning but terminaing conditioned passed"
+            # assert options.relax_target_condition_during_rollout is False
             self.target_convex_set = target_convex_set
             self.target_state_dim = self.target_convex_set.ambient_dimension()
             self.xt = np.zeros(self.target_state_dim)
