@@ -259,7 +259,13 @@ def solve_parallelized_convex_restriction(
 
                 # TODO: in practice this should be put as lorentz cone, not quadratic
                 for evaluator in edge.quadratic_inequality_evaluators:
-                    prog.AddConstraint(ge(evaluator(vertex_trajectory[i-1], u, x, target_state), 0))
+                    formulas = evaluator(vertex_trajectory[i-1], u, x, target_state)
+                    if isinstance(formulas, Expression):
+                        prog.AddConstraint(formulas >= 0)    
+                    else:
+                        prog.AddConstraint(ge(formulas,0))
+                    # for formula in formulas:
+                    #     prog.AddConstraint(formula)
 
                 # groebner bases related stuff
                 for evaluator in edge.groebner_basis_equality_evaluators:

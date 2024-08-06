@@ -167,7 +167,6 @@ class DualVertex:
         Defining indeterminates for x and flow-in violation polynomial, if necesary
         """
         self.x = prog.NewIndeterminates(self.state_dim, "x_" + self.name)
-        self.vars = Variables(np.hstack((self.x, self.xt)))
         if self.options.allow_vertex_revisits or self.vertex_is_target:
             self.total_flow_in_violation = Expression(0)
             self.total_flow_in_violation_mat = np.zeros((self.target_state_dim+1,self.target_state_dim+1))
@@ -496,20 +495,26 @@ class PolynomialDualGCS:
 
         self.bidir_flow_violation_matrices = []
 
-        if options.dont_do_goal_conditioning:
-            assert relaxed_target_condition_for_policy is None, "not doing goal conditioning but terminaing conditioned passed"
-            assert options.relax_target_condition_during_rollout is False
         if options.relax_target_condition_during_rollout is False:
             assert relaxed_target_condition_for_policy is None, "relaxed target condition not passed"
         if relaxed_target_condition_for_policy is None:
             assert options.relax_target_condition_during_rollout is False, "relaxed target condition passed but now relaxing"
 
-        self.target_convex_set = target_convex_set
-        self.target_moment_matrix = get_moment_matrix_for_a_measure_over_set(target_convex_set)
-        self.target_state_dim = self.target_convex_set.ambient_dimension()
-        self.xt = self.prog.NewIndeterminates(self.target_state_dim)
+        if options.dont_do_goal_conditioning:
+            assert relaxed_target_condition_for_policy is None, "not doing goal conditioning but terminaing conditioned passed"
+            assert options.relax_target_condition_during_rollout is False
+            self.target_convex_set = target_convex_set
+            self.target_state_dim = self.target_convex_set.ambient_dimension()
+            self.xt = np.zeros(self.target_state_dim)
+            self.target_moment_matrix = get_moment_matrix_for_a_measure_over_set(Point(self.xt))
+        else:
+            self.target_convex_set = target_convex_set
+            self.target_moment_matrix = get_moment_matrix_for_a_measure_over_set(target_convex_set)
+            self.target_state_dim = self.target_convex_set.ambient_dimension()
+            self.xt = self.prog.NewIndeterminates(self.target_state_dim)
         if target_cost_matrix is None:
             target_cost_matrix = np.zeros((2*self.target_state_dim+1, 2*self.target_state_dim+1))
+
         vt = DualVertex(
             "target",
             self.prog,
