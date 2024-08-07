@@ -40,9 +40,9 @@ from pydrake.math import (  # pylint: disable=import-error, no-name-in-module, u
     le,
 )
 import copy
-from tqdm import tqdm
+# from tqdm import tqdm
 import plotly.graph_objects as go  # pylint: disable=import-error
-import plotly.graph_objs as go
+# import plotly.graph_objs as go
 
 from collections import deque
 from queue import PriorityQueue
@@ -812,24 +812,24 @@ def plot_optimal(
     options = graph.options
     options.vertify_options_validity()
 
-    if target_state is None:
-        if options.dont_do_goal_conditioning:
-            target_state = np.zeros(vertex.state_dim)
-        else:
-            assert vertex.target_set_type is Point, "target set not passed when target set not a point"
-            target_state = vertex.target_convex_set.x()
+    # if target_state is None:
+    #     if options.dont_do_goal_conditioning:
+    #         target_state = np.zeros(vertex.state_dim)
+    #     else:
+    #         assert vertex.target_set_type is Point, "target set not passed when target set not a point"
+    #         target_state = vertex.target_convex_set.x()
 
-    optimal_dt, _, optimal_path, optimal_v_path = get_optimal_path(graph, vertex, state, options, target_state)
-    if verbose_comparison:
-        optimal_cost = get_path_cost(graph, optimal_v_path, optimal_path, False, True, target_state)
-        INFO("optimal. time", np.round(optimal_dt,3), "cost", np.round(optimal_cost, 3))
-        INFO("----")
+    # optimal_dt, _, optimal_path, optimal_v_path = get_optimal_path(graph, vertex, state, options, target_state)
+    # if verbose_comparison:
+    #     optimal_cost = get_path_cost(graph, optimal_v_path, optimal_path, False, True, target_state)
+    #     INFO("optimal. time", np.round(optimal_dt,3), "cost", np.round(optimal_cost, 3))
+    #     INFO("----")
 
-    if plot_control_points:
-        plot_bezier(fig, optimal_path, optimal_color, optimal_color, name=optimal_name,linewidth=linewidth, marker_size=marker_size, plot_start_point=plot_start_point, dotted=dotted, plot_start_target_only=plot_start_target_only)
-    else:
-        plot_bezier(fig, optimal_path, optimal_color, None, name=optimal_name,linewidth=linewidth, marker_size=marker_size, plot_start_point=plot_start_point, dotted=dotted, plot_start_target_only=plot_start_target_only)
-    return True, optimal_dt
+    # if plot_control_points:
+    #     plot_bezier(fig, optimal_path, optimal_color, optimal_color, name=optimal_name,linewidth=linewidth, marker_size=marker_size, plot_start_point=plot_start_point, dotted=dotted, plot_start_target_only=plot_start_target_only)
+    # else:
+    #     plot_bezier(fig, optimal_path, optimal_color, None, name=optimal_name,linewidth=linewidth, marker_size=marker_size, plot_start_point=plot_start_point, dotted=dotted, plot_start_target_only=plot_start_target_only)
+    # return True, optimal_dt
 
 
 def plot_rollout(

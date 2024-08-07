@@ -8,7 +8,7 @@ from util import timeit, INFO, YAY, ERROR, WARN  # pylint: disable=unused-import
 from pydrake.geometry.optimization import (  # pylint: disable=import-error, no-name-in-module
     HPolyhedron,
 )
-from pydrake.all import MosekSolver
+from pydrake.all import MosekSolver  # pylint: disable=import-error, no-name-in-module, unused-import
 
 FREE_POLY = "free_poly"
 PSD_POLY = "psd_poly"
