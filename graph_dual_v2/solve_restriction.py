@@ -354,21 +354,6 @@ def solve_parallelized_convex_restriction(
                 prog.SetSolverOption(SnoptSolver().solver_id(), "Minor feasibility tolerance", options.policy_snopt_minor_feasibility_tolerance)
                 prog.SetSolverOption(SnoptSolver().solver_id(), "Major feasibility tolerance", options.policy_snopt_major_feasibility_tolerance)
                 prog.SetSolverOption(SnoptSolver().solver_id(), "Major optimality tolerance", options.policy_snopt_major_optimality_tolerance)
-
-            # if warmstart is not None:
-            #     res = warmstart
-            #     prog.SetInitialGuess(x[1:], res["x"])
-            #     prog.SetInitialGuess(y[1:], res["y"])
-            #     prog.SetInitialGuess(th[1:], res["th"])
-            #     # prog.SetInitialGuess(dx[1:], res["dx"])
-            #     # prog.SetInitialGuess(dy[1:], res["dy"])
-            #     # prog.SetInitialGuess(dth[1:], res["dth"])
-            #     prog.SetInitialGuess(c[1:], res["c"])
-            #     prog.SetInitialGuess(s[1:], res["s"])
-                # prog.SetInitialGuess(dc[1:], res["dc"])
-                # prog.SetInitialGuess(ds[1:], res["ds"])
-                # prog.SetInitialGuess(v, res["v"])
-                # prog.SetInitialGuess(w, res["w"])
             solution = options.policy_solver().Solve(prog)
         else:
             solution = options.policy_solver().Solve(prog)
