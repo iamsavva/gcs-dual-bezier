@@ -78,6 +78,8 @@ class ProgramOptions:
 
         self.policy_rollout_reoptimize_path_so_far_and_K_step = False
         self.policy_rollout_reoptimize_path_so_far_before_K_step = False
+        self.so_far_and_k_step_ratio = 1
+        self.so_far_and_k_step_initials = 5
 
         # ----------------------------------
         # GCS policy related settings.

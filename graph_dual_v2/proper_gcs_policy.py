@@ -134,8 +134,10 @@ def get_k_step_optimal_paths(
     
     INFO("options", len(vertex_paths), verbose=options.policy_verbose_choices)
     solve_times = [0.0]*len(vertex_paths)
+
     for i, vertex_path in enumerate(vertex_paths):
-        if options.policy_rollout_reoptimize_path_so_far_and_K_step:
+        if options.policy_rollout_reoptimize_path_so_far_and_K_step and \
+            (len(node.vertex_path) <= options.so_far_and_k_step_initials or len(node.vertex_path) % options.so_far_and_k_step_ratio <= 1e-3):
             index = len(node.vertex_path)
             warmstart = node if options.policy_use_warmstarting else None
             r_sol, solver_time = solve_convex_restriction(graph, 

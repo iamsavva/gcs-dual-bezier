@@ -140,7 +140,25 @@ def check_that_foot_forces_exist(restriction: RestrictionSolution, z, m, g, w, h
         prog.AddLinearConstraint( np.sum([c for c in constants]) == 1 ) # inside support
         prog.AddLinearConstraint( np.sum([constants[i]*corners[i][0] for i in range(len(corners))]) == cop[0] )
         prog.AddLinearConstraint( np.sum([constants[i]*corners[i][1] for i in range(len(corners))]) == cop[1] )
-        solution = Solve(prog)
+        solver = MosekSolver()
+        solver_options = SolverOptions()
+        solver_options.SetOption(
+            MosekSolver.id(),
+            "MSK_DPAR_INTPNT_CO_TOL_REL_GAP",
+            1e-4
+        )
+        solver_options.SetOption(
+            MosekSolver.id(),
+            "MSK_DPAR_INTPNT_CO_TOL_PFEAS",
+            1e-4
+        )
+        solver_options.SetOption(
+            MosekSolver.id(),
+            "MSK_DPAR_INTPNT_CO_TOL_DFEAS",
+            1e-4
+        )
+        solution = solver.Solve(prog, solver_options=solver_options)
+        
         if not solution.is_success():
             failed = True
             WARN("failed at timestep ", i)
