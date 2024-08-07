@@ -207,8 +207,12 @@ def solve_parallelized_convex_restriction(
         for i, vertex in enumerate(vertex_path):
             x = prog.NewContinuousVariables(vertex.state_dim, "x"+str(i))
             vertex_trajectory.append(x)
-            if warmstart is not None and i < warmstart.length():
-                prog.SetInitialGuess(x, warmstart.trajectory[i])
+            if warmstart is not None:
+                if i < warmstart.length():
+                    prog.SetInitialGuess(x, warmstart.trajectory[i])
+                else:
+                    # NOTE: this is heuristic. we don't have a guess for these variables
+                    prog.SetInitialGuess(x, warmstart.trajectory[-1])
             
             if not vertex.vertex_is_target:
                 add_set_membership(prog, vertex.convex_set, x, True)
@@ -254,8 +258,12 @@ def solve_parallelized_convex_restriction(
                         add_set_membership(prog, edge.left.convex_set, x, True)
 
                 u = None if edge.u is None else prog.NewContinuousVariables(len(edge.u))
-                if u is not None and warmstart is not None and i < warmstart.length():
-                    prog.SetInitialGuess(u, warmstart.edge_variable_trajectory[i-1])
+                if u is not None and warmstart is not None and len(warmstart.edge_variable_trajectory) > 0:
+                    if i < warmstart.length():
+                        prog.SetInitialGuess(u, warmstart.edge_variable_trajectory[i-1])
+                    else:
+                        # NOTE: this is heuristic. we don't have a guess for these variables
+                        prog.SetInitialGuess(u, warmstart.edge_variable_trajectory[-1])
 
                 edge_variable_trajectory.append(u)
                 if edge.u_bounding_set is not None:
