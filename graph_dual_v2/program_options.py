@@ -71,6 +71,7 @@ class ProgramOptions:
         self.policy_snopt_minor_feasibility_tolerance = 1e-6
         self.policy_snopt_major_feasibility_tolerance = 1e-6
         self.policy_snopt_major_optimality_tolerance = 1e-6
+        self.policy_use_warmstarting = False
 
         self.policy_verbose_choices = False
         self.policy_verbose_number_of_restrictions_solves = False

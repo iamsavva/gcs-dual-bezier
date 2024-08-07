@@ -137,18 +137,21 @@ def get_k_step_optimal_paths(
     for i, vertex_path in enumerate(vertex_paths):
         if options.policy_rollout_reoptimize_path_so_far_and_K_step:
             index = len(node.vertex_path)
+            warmstart = node if options.policy_use_warmstarting else None
             r_sol, solver_time = solve_convex_restriction(graph, 
                                                           node.vertex_path[:-1] + vertex_path, 
                                                           node.point_initial(), 
                                                           target_state=target_state, 
-                                                          one_last_solve=False)
+                                                          one_last_solve=False,
+                                                          warmstart=warmstart)
         else:
             index = 1
             r_sol, solver_time = solve_convex_restriction(graph, 
                                                           vertex_path, 
                                                           node.point_now(), 
                                                           target_state=target_state, 
-                                                          one_last_solve=False)
+                                                          one_last_solve=False,
+                                                          warmstart=None)
         solve_times[i] = solver_time
         if r_sol is not None:
             add_target_heuristic = True
@@ -222,6 +225,30 @@ def repeats_to_vertex_names(vertices, repeats):
         res += [vertices[i]] * repeats[i]
     return res
 
+
+def get_warmstart_for_a_shortcut(restriction:RestrictionSolution, 
+                                 og_repeats:T.List[int], 
+                                 new_repeats:T.List[int], 
+                                 unique_vertices:T.List[DualVertex]):
+    new_vertex_path = repeats_to_vertex_names(unique_vertices, new_repeats)
+    new_trajectory = []
+    new_edge_var_trajectory = []
+    index = 0
+    for i, og_repeat in enumerate(og_repeats):
+        new_repeat = new_repeats[i]
+        j = 0
+        while j < new_repeat:
+            if index < len(restriction.trajectory):
+                new_trajectory.append(restriction.trajectory[index])
+            if index < len(restriction.edge_variable_trajectory):
+                new_edge_var_trajectory.append(restriction.edge_variable_trajectory[index])
+            index += 1
+            j+=1
+        index += (og_repeat-new_repeat)
+    assert len(new_trajectory) == len(new_vertex_path)
+    assert len(new_trajectory) == len(new_edge_var_trajectory) + 1
+    return RestrictionSolution(new_vertex_path, new_trajectory, new_edge_var_trajectory)
+
 def postprocess_the_path(graph:PolynomialDualGCS, 
                           restriction: RestrictionSolution,
                           initial_state:npt.NDArray, 
@@ -247,7 +274,10 @@ def postprocess_the_path(graph:PolynomialDualGCS,
                 que = PriorityQueue()
                 for j, shortcut_repeat in enumerate(shortcut_repeats):
                     vertex_path = repeats_to_vertex_names(unique_vertices, shortcut_repeat)
-                    new_restriction, solver_time = solve_convex_restriction(graph, vertex_path, initial_state, verbose_failure=False, target_state=target_state, one_last_solve = True)
+                    warmstart = None
+                    if options.policy_use_warmstarting:
+                        warmstart = get_warmstart_for_a_shortcut(best_restriction, repeats, shortcut_repeat, unique_vertices)
+                    new_restriction, solver_time = solve_convex_restriction(graph, vertex_path, initial_state, verbose_failure=False, target_state=target_state, one_last_solve = True, warmstart=warmstart)
                     solve_times[j] = solver_time
                     if new_restriction is not None:
                         restriction_cost = new_restriction.get_cost(graph, False, True, target_state=target_state)
@@ -272,7 +302,10 @@ def postprocess_the_path(graph:PolynomialDualGCS,
         que = PriorityQueue()
         for i, shortcut_repeat in enumerate(shortcut_repeats):
             vertex_path = repeats_to_vertex_names(unique_vertices, shortcut_repeat)
-            new_restriction, solver_time = solve_convex_restriction(graph, vertex_path, initial_state, verbose_failure=False, target_state=target_state, one_last_solve = True)
+            warmstart = None
+            if options.policy_use_warmstarting:
+                warmstart = get_warmstart_for_a_shortcut(best_restriction, repeats, shortcut_repeat, unique_vertices)
+            new_restriction, solver_time = solve_convex_restriction(graph, vertex_path, initial_state, verbose_failure=False, target_state=target_state, one_last_solve = True, warmstart=warmstart)
             solve_times[i] = solver_time
             if new_restriction is not None:
                 restriction_cost = new_restriction.get_cost(graph, False, True, target_state=target_state)

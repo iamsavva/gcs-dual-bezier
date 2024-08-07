@@ -171,6 +171,7 @@ def solve_parallelized_convex_restriction(
     one_last_solve:bool = False,
     verbose_solve_success = True,
     double_integrator_delta_t_lists: T.List[T.List[float]] = None,
+    warmstart:RestrictionSolution = None,
 ) -> T.Tuple[T.List[RestrictionSolution], float]:
     """
     solve a convex restriction over a vertex path
@@ -206,6 +207,8 @@ def solve_parallelized_convex_restriction(
         for i, vertex in enumerate(vertex_path):
             x = prog.NewContinuousVariables(vertex.state_dim, "x"+str(i))
             vertex_trajectory.append(x)
+            if warmstart is not None and i < warmstart.length():
+                prog.SetInitialGuess(x, warmstart.trajectory[i])
             
             if not vertex.vertex_is_target:
                 add_set_membership(prog, vertex.convex_set, x, True)
@@ -223,9 +226,9 @@ def solve_parallelized_convex_restriction(
                         terminating_condition = recenter_convex_set(vertex.relaxed_target_condition_for_policy, target_state)
                         add_set_membership(prog, terminating_condition, x, True)
                     else:
-                        # prog.AddLinearEqualityConstraint(x, target_state)
                         prog.AddLinearConstraint(eq(x, target_state))
 
+                # NOTE: this might be helpeful if i ever want to define terminal state to be a point and relax final conditions
                 # if options.relax_target_condition_during_rollout and not one_last_solve:
                 #     # during rollout: relax target condition.
                 #     # at the end when solving restriction -- don't.
@@ -251,6 +254,9 @@ def solve_parallelized_convex_restriction(
                         add_set_membership(prog, edge.left.convex_set, x, True)
 
                 u = None if edge.u is None else prog.NewContinuousVariables(len(edge.u))
+                if u is not None and warmstart is not None and i < warmstart.length():
+                    prog.SetInitialGuess(u, warmstart.edge_variable_trajectory[i-1])
+
                 edge_variable_trajectory.append(u)
                 if edge.u_bounding_set is not None:
                     add_set_membership(prog, edge.u_bounding_set, u, True)
@@ -276,8 +282,6 @@ def solve_parallelized_convex_restriction(
                         prog.AddConstraint(formulas >= 0)    
                     else:
                         prog.AddConstraint(ge(formulas,0))
-                    # for formula in formulas:
-                    #     prog.AddConstraint(formula)
 
                 # groebner bases related stuff
                 for evaluator in edge.groebner_basis_equality_evaluators:
@@ -381,7 +385,6 @@ def solve_parallelized_convex_restriction(
         solver_solve_time = solution.get_solver_details().solve_time
     elif options.policy_solver == SnoptSolver or solution.get_solver_id().name() == "SNOPT":
         solver_solve_time = solution.get_solver_details().solve_time 
-        # solver_solve_time = timed_solve_time
     else:
         WARN("don't know how to get solver time for the solver", solution.get_solver_id().name())
         raise NotImplementedError()
@@ -410,9 +413,10 @@ def solve_convex_restriction(
     target_state:npt.NDArray = None,
     one_last_solve = False,
     double_itnegrator_delta_t_list = None,
+    warmstart:RestrictionSolution = None,
 ) -> T.Tuple[RestrictionSolution, float]:
     double_integrator_delta_t_lists = None if double_itnegrator_delta_t_list is None else [double_itnegrator_delta_t_list]
-    result, dt = solve_parallelized_convex_restriction(graph, [vertex_path], state_now, verbose_failure, target_state, one_last_solve, False, double_integrator_delta_t_lists)
+    result, dt = solve_parallelized_convex_restriction(graph, [vertex_path], state_now, verbose_failure, target_state, one_last_solve, False, double_integrator_delta_t_lists, warmstart)
     if result is None:
         return None, dt
     else:
